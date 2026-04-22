@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+
+# Build output
+build/
+.svelte-kit/
+
+# Vite cache
+.vite/
+
+# Herbarium images (loaded at runtime via File System Access API, never bundled)
+herbarium_images/
+
+# Source spreadsheets (ship CSV only — see CLAUDE.md)
+*.xlsx
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Claude Code (user-specific, do not share)
+.claude/
+
+# Internal design notes (not for public repo)
+Codex_architecture.md
