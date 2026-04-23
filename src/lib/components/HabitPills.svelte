@@ -1,5 +1,5 @@
 <script>
-	import { filterStore } from '$lib/stores/taxa.js';
+	import { filterStore, filterOptionCounts } from '$lib/stores/taxa.js';
 
 	const HABITS = [
 		{ id: 'tree', label: 'Tree' },
@@ -29,7 +29,7 @@
 				? 'bg-emerald-600 text-white'
 				: 'border border-gray-300 bg-white text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'}"
 		>
-			{h.label}
+			{h.label} ({$filterOptionCounts.habits[h.id] ?? 0})
 		</button>
 	{/each}
 </div>

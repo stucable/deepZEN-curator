@@ -1,5 +1,5 @@
 <script>
-	import { taxaStore, taxaSourceStore, taxaSourceFilenameStore, csvLoadErrorStore, filterStore, filteredSpecies, totalSpeciesCount, availableFamilies, availableGenera, vernacularOptions, DEFAULT_HABITS } from '$lib/stores/taxa.js';
+	import { taxaStore, taxaSourceStore, taxaSourceFilenameStore, csvLoadErrorStore, filterStore, filteredSpecies, totalSpeciesCount, availableFamilies, availableGenera, vernacularOptions, filterOptionCounts, DEFAULT_HABITS } from '$lib/stores/taxa.js';
 	import { folderHandleStore, pendingFolderHandleStore, selectFolder, reconnectFolder } from '$lib/stores/folder.js';
 	import { currentDatasetStore } from '$lib/stores/dataset.js';
 	import { VERSION } from '$lib/version.js';
@@ -151,7 +151,7 @@
 			<option value="">All orders</option>
 			{#if $taxaStore}
 				{#each $taxaStore.allOrders as ord}
-					<option value={ord}>{ord}</option>
+					<option value={ord}>{ord} ({$filterOptionCounts.order[ord] ?? 0})</option>
 				{/each}
 			{/if}
 		</select>
@@ -170,7 +170,7 @@
 		>
 			<option value="">All families</option>
 			{#each $availableFamilies as fam}
-				<option value={fam}>{fam}</option>
+				<option value={fam}>{fam} ({$filterOptionCounts.family[fam] ?? 0})</option>
 			{/each}
 		</select>
 	</div>
@@ -188,7 +188,7 @@
 		>
 			<option value="">All genera</option>
 			{#each $availableGenera as gen}
-				<option value={gen}>{gen}</option>
+				<option value={gen}>{gen} ({$filterOptionCounts.genus[gen] ?? 0})</option>
 			{/each}
 		</select>
 	</div>
@@ -234,7 +234,7 @@
 			<option value="">All arrangements</option>
 			{#if $taxaStore}
 				{#each $taxaStore.allLeafArrangements as la}
-					<option value={la}>{la}</option>
+					<option value={la}>{la} ({$filterOptionCounts.leafArrangement[la] ?? 0})</option>
 				{/each}
 			{/if}
 		</select>
@@ -254,7 +254,7 @@
 			<option value="">All forms</option>
 			{#if $taxaStore}
 				{#each $taxaStore.allLeafForms as lf}
-					<option value={lf}>{lf}</option>
+					<option value={lf}>{lf} ({$filterOptionCounts.leafForm[lf] ?? 0})</option>
 				{/each}
 			{/if}
 		</select>
@@ -274,7 +274,7 @@
 			<option value="">All venations</option>
 			{#if $taxaStore}
 				{#each $taxaStore.allLeafVenations as lv}
-					<option value={lv}>{lv}</option>
+					<option value={lv}>{lv} ({$filterOptionCounts.leafVenation[lv] ?? 0})</option>
 				{/each}
 			{/if}
 		</select>
@@ -294,7 +294,7 @@
 			<option value="">All margins</option>
 			{#if $taxaStore}
 				{#each $taxaStore.allLeafMargins as lm}
-					<option value={lm}>{lm}</option>
+					<option value={lm}>{lm} ({$filterOptionCounts.leafMargin[lm] ?? 0})</option>
 				{/each}
 			{/if}
 		</select>
@@ -314,7 +314,7 @@
 			<option value="">All stipules</option>
 			{#if $taxaStore}
 				{#each $taxaStore.allStipules as st}
-					<option value={st}>{st}</option>
+					<option value={st}>{st} ({$filterOptionCounts.stipules[st] ?? 0})</option>
 				{/each}
 			{/if}
 		</select>
@@ -334,7 +334,7 @@
 			<option value="">All exudates</option>
 			{#if $taxaStore}
 				{#each $taxaStore.allExudates as ex}
-					<option value={ex}>{ex}</option>
+					<option value={ex}>{ex} ({$filterOptionCounts.exudate[ex] ?? 0})</option>
 				{/each}
 			{/if}
 		</select>
@@ -354,7 +354,7 @@
 			<option value="">All armatures</option>
 			{#if $taxaStore}
 				{#each $taxaStore.allStemArmatures as sa}
-					<option value={sa}>{sa}</option>
+					<option value={sa}>{sa} ({$filterOptionCounts.stemArmature[sa] ?? 0})</option>
 				{/each}
 			{/if}
 		</select>
@@ -374,7 +374,7 @@
 			<option value="">All tendrils</option>
 			{#if $taxaStore}
 				{#each $taxaStore.allTendrils as td}
-					<option value={td}>{td}</option>
+					<option value={td}>{td} ({$filterOptionCounts.tendrils[td] ?? 0})</option>
 				{/each}
 			{/if}
 		</select>
