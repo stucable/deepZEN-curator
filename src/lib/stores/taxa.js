@@ -41,7 +41,9 @@ export const filterStore = writable({
 	leafVenation: '',
 	leafMargin: '',
 	stipules: '',
-	exudate: ''
+	exudate: '',
+	stemArmature: '',
+	tendrils: ''
 });
 
 /**
@@ -69,7 +71,9 @@ export const filteredSpecies = derived(
 		}
 		if ($filter.habits?.length > 0) {
 			species = species.filter(
-				(s) => s.traits.habit === '' || $filter.habits.includes(s.traits.habit)
+				(s) =>
+					s.traits.habit.length === 0 ||
+					s.traits.habit.some((h) => $filter.habits.includes(h))
 			);
 		}
 		if ($filter.leafArrangement) {
@@ -85,10 +89,24 @@ export const filteredSpecies = derived(
 			species = species.filter((s) => s.traits.leafMargin === $filter.leafMargin);
 		}
 		if ($filter.stipules) {
-			species = species.filter((s) => s.traits.stipules === $filter.stipules);
+			// Caducous stipules fall off early, so a field observer may record
+			// them as either 'caducous' or 'absent'. Treat the two as one bucket
+			// when 'caducous' is selected.
+			species = species.filter((s) => {
+				if ($filter.stipules === 'caducous') {
+					return s.traits.stipules === 'caducous' || s.traits.stipules === 'absent';
+				}
+				return s.traits.stipules === $filter.stipules;
+			});
 		}
 		if ($filter.exudate) {
 			species = species.filter((s) => s.traits.exudate === $filter.exudate);
+		}
+		if ($filter.stemArmature) {
+			species = species.filter((s) => s.traits.stemArmature === $filter.stemArmature);
+		}
+		if ($filter.tendrils) {
+			species = species.filter((s) => s.traits.tendrils === $filter.tendrils);
 		}
 
 		species.sort((a, b) =>

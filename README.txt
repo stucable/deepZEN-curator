@@ -1,72 +1,206 @@
-Ankarafantsika Plant Viewer
-===========================
+deepZEN-curator  —  v0.2  (Ankarafantsika, 2026-04-22)
+=======================================================
 
-A local herbarium image browser for field botanists.
+Offline herbarium image browser for field botanists at Ankarafantsika.
+Runs entirely on your laptop — no internet needed once you have the files.
 
-QUICK START (Windows)
----------------------
-1. Double-click start.bat
-2. Chrome will open automatically at http://localhost:5173
-3. Click "Select image folder" in the left sidebar
-4. Navigate to your folder of herbarium JPEG images
-5. Species cards will load images from that folder
 
-NOTES
------
-- Python must be installed on your computer (python.org)
-- The app runs entirely offline — no internet needed
-- Your folder choice is remembered between sessions
-- Filter species by Order, Family, Genus, Vernacular name, Habit, Leaf
-  arrangement, Leaf form, Leaf venation, Leaf margin, Stipules and Exudate
-  using the sidebar fields. Combine filters to narrow the grid.
-- The Vernacular name field is a typeahead — start typing and pick from the
-  suggestion list. More than one species can share the same vernacular name
-  (e.g. "fig" matching every Ficus); selecting it shows all of them.
-- Click any thumbnail to view the full-size image
-- Use arrow keys to navigate between images in the lightbox
-- Press Escape to close the lightbox
+QUICK START (Windows 11)
+------------------------
+1. Unzip this folder somewhere convenient (e.g. your Desktop).
+2. Double-click start.bat.
+   - If Windows SmartScreen blocks it, click "More info" then "Run anyway".
+3. Google Chrome opens at http://localhost:5173.
+4. In the left sidebar, click "Select image folder".
+5. Browse to your folder of Ankarafantsika herbarium .jpg images.
+6. Species cards will populate with thumbnails. Click any thumbnail to
+   view the full image. Use the arrow keys in the lightbox to flip
+   through images; press Escape to close.
 
-LINUX / MAC
------------
-Run: bash start.sh
+Your image-folder choice is remembered between sessions. If Chrome
+forgets (e.g. after a browser reset), just click "Reconnect" or
+"Select image folder" again.
 
-EDITING SPECIES DATA (no rebuild needed)
-----------------------------------------
-Species data lives in CSV files under the `data/` folder next to this README
-(one file per dataset, e.g. data/ankarafantsika.csv). You can edit these in
-Excel, LibreOffice, or a text editor to add vernacular names, fix typos, or
-add new species rows. Reload the browser tab (Ctrl+F5) and the changes appear
-immediately — no rebuild required.
 
-Columns the app reads:
-  TaxonomicName      required — scientific name, used as the display label
-  CatalogueNumber    required for images — matches <value>.jpg in the image
-                     folder; one row per image, so a species with three
-                     images has three rows with the same TaxonomicName
-  Clade, Order,      optional — shown / used for filters
+IF PYTHON IS NOT INSTALLED
+--------------------------
+start.bat will tell you if Python is missing. To install it:
+
+- Open the Microsoft Store, search for "Python 3.12", click Install.
+  This does not require admin rights.
+- If the Store is blocked, try Company Portal, or download from
+  https://python.org (an admin may need to run the installer).
+
+After installing, double-click start.bat again.
+
+
+FILTERS
+-------
+The sidebar lets you narrow the grid by any combination of:
+
+  Order, Family, Genus, Vernacular name, Habit, Leaf arrangement,
+  Leaf form, Leaf venation, Leaf margin, Stipules, Exudate,
+  Stem armature, Tendrils.
+
+Notes:
+- Vernacular name is a typeahead — start typing and pick from the list.
+  Many species can share a vernacular name (e.g. "fig" matches every
+  Ficus); selecting it shows all of them.
+- Habit is a multi-select pill row (defaults to tree + shrub). A species
+  with multiple habits (e.g. "climber;shrub;tree") shows under any of
+  them.
+- Stipules: if you pick "caducous", species recorded as "absent" are
+  also shown — caducous stipules fall off early, so a field observer
+  may see either. This is intentional.
+- "Clear filters" resets everything and reselects tree + shrub.
+
+
+EDIT THE SPECIES DATA YOURSELF
+------------------------------
+Each tester can maintain a personal copy of the CSV — add vernacular
+names, fix typos, add new species rows — without waiting for a rebuild.
+The app picks up your personal copy automatically.
+
+How:
+
+1. In the app folder, open build\data\. Copy the file
+   Ankarafantsika_herbarium_images_260422.csv
+   into your image folder (the same folder you selected in step 4 of
+   Quick Start, next to the .jpg files).
+
+2. Rename the copy to
+   Ankarafantsika_herbarium_images_<YourName>.csv
+   For example: Ankarafantsika_herbarium_images_Johny.csv
+   (Capitalisation does not matter.)
+
+3. Open your copy in Excel, make your edits, then save as CSV
+   (Comma delimited, *.csv). Do NOT save as .xlsx — the app cannot
+   read Excel files and will show an empty grid.
+
+4. Reload the browser tab (Ctrl+F5). The sidebar will say:
+     Using Ankarafantsika_herbarium_images_Johny.csv from this folder
+   Your edits are live.
+
+5. To go back to the shipped data, delete or rename your personal
+   file and reload the tab.
+
+6. To share edits with the other testers, email each other the CSV.
+   (In a future version the data will live in a cloud database and
+   sync automatically.)
+
+If your personal CSV has a typo and cannot be parsed, an amber banner
+appears naming the file, and the grid keeps showing the previously
+loaded data so nothing breaks.
+
+
+CSV COLUMN REFERENCE
+--------------------
+Columns the app reads (case-sensitive):
+
+  TaxonomicName      required — scientific name, the display label.
+  CatalogueNumber    required for images — matches <value>.jpg in
+                     your image folder. One row per image, so a
+                     species with three images has three rows with
+                     the same TaxonomicName.
+  Clade, Order,      optional — shown and used for filters.
     Family, Genus
-  VernacularName     optional — shown in brackets after the scientific name
-                     and powers the vernacular typeahead filter
-  Habit              optional — tree / shrub / herb / liana / epiphyte
-                     (case-insensitive; "Trees" and "tree" both work)
-  LeafArrangement,   optional — each one drives its own sidebar filter;
-    LeafForm,          dropdown options are taken from the values present
-    LeafVenation,      in the column (e.g. simple / compound, entire /
-    LeafMargin,        toothed, present / absent, milky / clear / none).
-    Stipules,          Leave a cell blank if you don't know — blank cells
-    Exudate            are hidden only when that specific filter is active.
+  VernacularName     optional — shown after the scientific name and
+                     powers the vernacular typeahead filter.
+  Habit              optional — tree / shrub / herb / liana / epiphyte.
+                     Multiple values separated by ";" (e.g.
+                     "climber;shrub;tree"). "climber" is treated as
+                     "liana". Case-insensitive.
+  LeafArrangement,   optional — each one drives its own sidebar filter.
+    LeafForm,          Dropdown options are taken from the values
+    LeafVenation,      present in the column. Leave a cell blank if
+    LeafMargin,        you don't know — blank cells are hidden only
+    Stipules,          when that specific filter is active.
+    Exudate,
+    StemArmature,
+    Tendrils
 
-Other columns are ignored. Column names are case-sensitive.
+Any other columns are ignored.
 
-IMPORTANT: save as real .csv, not .xlsx. The app cannot read Excel files and
-will simply show an empty grid if the file is saved in Excel format.
+Shipped data file: build\data\Ankarafantsika_herbarium_images_260422.csv
 
-Adding a whole new dataset (new CSV file plus a new entry in the Dataset
-selector) does require a rebuild — ask the developer.
+
+CHROME ONLY
+-----------
+This app uses the browser's File System Access API to read images
+from your local folder. That feature only exists in Google Chrome
+(and Edge). Firefox and Safari will not work.
+
+
+HOW IT WORKS (for the technically curious)
+------------------------------------------
+- The app is a small website — plain HTML, CSS, and JavaScript —
+  that lives in the build\ folder on your laptop. It is NOT
+  compiled to an .exe, and NOT WebAssembly. It is an ordinary
+  web page, served from your own computer instead of the internet.
+
+- start.bat launches a tiny local web server (Python's built-in
+  http.server) that serves build\ on http://localhost:5173, then
+  opens Chrome at that address. "localhost" means "this machine"
+  — nothing is sent or received over the internet. You can
+  unplug the network cable and it still works. Your CSV and
+  image folder never leave your laptop; the browser reads them
+  directly from disk through the folder picker.
+
+- Why a browser rather than a normal installed program (.exe)?
+  * Chrome already provides everything the app needs: a fast
+    image viewer, the folder-picker that reads your .jpg files
+    from disk, a layout engine, keyboard shortcuts. Rebuilding
+    that as a desktop app would mean shipping ~100 MB of extra
+    code for no visible gain.
+  * An unsigned .exe on a managed Windows laptop usually trips
+    SmartScreen and may need IT approval. A zip plus start.bat
+    needs none of that: you unzip it and run — nothing is
+    installed, nothing touches the registry, uninstalling is
+    just deleting the folder.
+  * The same build runs on Windows, Mac, and Linux with no
+    platform-specific packaging.
+  * Updates are a small zip dropped over the old folder.
+
+- Why the local server rather than just opening an .html file?
+  Chrome refuses to load JavaScript modules from file:// URLs
+  for security reasons. A tiny server on localhost is the
+  minimum workaround and exposes nothing to the network.
+
+- Is it sandboxed? Yes, the app code runs inside a Chrome tab,
+  so it inherits Chrome's tab sandbox: no arbitrary filesystem
+  access, no ability to install drivers, no registry writes.
+  The folder you pick is the only folder the app can see —
+  Chrome will not let it read anywhere else on disk. The page
+  only talks to localhost (itself); no internet traffic, no
+  telemetry. The one unsandboxed piece is the small Python
+  web server that starts.bat launches: it is stock library
+  code, serves the build\ folder read-only, and is bound to
+  localhost so other machines on the network cannot reach it.
+
+
+REPORTING ISSUES / GETTING UPDATES
+----------------------------------
+- If something looks wrong (missing species, broken image, weird
+  filter behaviour), email Stuart with a screenshot and the
+  version number at the top of this file (v0.2).
+- New versions will arrive by email as a small zip. Unzip over
+  the old folder (or delete the old folder first to avoid stale
+  cached files), then double-click start.bat as before.
+- If only the CSV has changed, you can edit your personal copy
+  (see "Edit the species data yourself" above) — no re-install
+  required.
+
 
 TROUBLESHOOTING
 ---------------
-- If the browser does not open, manually go to http://localhost:5173
-- If images do not appear, make sure you selected the correct folder
-  containing .jpg files named by catalogue number (e.g. K000032574.jpg)
-- The app only works in Google Chrome (File System Access API required)
+- Browser didn't open: go to http://localhost:5173 manually in Chrome.
+- Images don't appear: check the image folder contains .jpg files
+  named by catalogue number (e.g. K000032574.jpg). Names must match
+  the CatalogueNumber column exactly, including any suffix like
+  K000175461_a.
+- "start.bat" disappears when double-clicked: SmartScreen may have
+  blocked it. Right-click, choose Properties, tick "Unblock", OK.
+- Port 5173 is already in use (rare): close any other local web
+  servers and try again, or ask Stuart for a different port.
+- Sidebar says "No folder selected" after a browser update: just
+  click "Select image folder" again.

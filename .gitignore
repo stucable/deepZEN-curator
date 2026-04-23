@@ -4,6 +4,7 @@ node_modules/
 # Build output
 build/
 .svelte-kit/
+dist/
 
 # Vite cache
 .vite/
@@ -42,3 +43,7 @@ desktop.ini
 
 # Internal design notes (not for public repo)
 Codex_architecture.md
+
+# Local scratch / one-off notes (not for the repo)
+data-files/
+RENAME_FOLDER.md

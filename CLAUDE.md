@@ -1,4 +1,4 @@
-# GTSBU Plant ID Tool
+# deepZEN-curator
 
 Offline herbarium image browser for field botanists in Madagascar. Ships with multiple dataset options (Ankarafantsika, Ranomafana, …) selectable at runtime.
 
@@ -101,11 +101,11 @@ Image folder handles are stored in IndexedDB under `imageFolderHandle:{datasetId
 
 ### Habit filter
 
-Canonical habit vocabulary: `tree`, `shrub`, `herb`, `liana`, `epiphyte` (lowercase singular). Raw CSV values are normalised at parse time (`csv.js:normalizeHabit`) using a `startsWith` match, so `Tree`/`trees`/`TREES` all collapse to `tree`. Unknown values pass through unchanged to avoid silent miscategorisation.
+Canonical habit vocabulary: `tree`, `shrub`, `herb`, `liana`, `epiphyte` (lowercase singular). Each species carries `traits.habit` as an array of canonical values — a row with `tree;shrub` in the CSV becomes `['tree', 'shrub']`. Normalisation at parse time (`csv.js:normalizeHabits`) splits on `;`, trims + lowercases each token, remaps via `HABIT_ALIASES` (currently `{ climber: 'liana' }` — extend this table when new synonyms appear), then `startsWith`-matches against `KNOWN_HABITS` so `Tree`/`trees`/`TREES` all collapse to `tree`. Unknown tokens pass through unchanged to avoid silent miscategorisation.
 
 UI is a multi-select pill row (`HabitPills.svelte`) rendered even when the dataset has no `Habit` column. The `filterStore.habits` default is `['tree', 'shrub']` (exported as `DEFAULT_HABITS`); "Clear filters" and dataset switches reset to this default.
 
-Species with an empty habit value always pass the filter — this keeps the grid non-empty when the `Habit` column is missing or partially populated.
+A species matches when **any** of its habits is in the selected set (so `['climber;shrub;tree']` shows under Tree, Shrub, or Liana). Species with an empty habit array always pass the filter — this keeps the grid non-empty when the `Habit` column is missing or partially populated.
 
 ### Vernacular name filter
 

@@ -36,7 +36,9 @@
 			leafVenation: '',
 			leafMargin: '',
 			stipules: '',
-			exudate: ''
+			exudate: '',
+			stemArmature: '',
+			tendrils: ''
 		};
 	}
 

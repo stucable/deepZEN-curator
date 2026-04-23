@@ -2,6 +2,7 @@
 	import { taxaStore, taxaSourceStore, taxaSourceFilenameStore, csvLoadErrorStore, filterStore, filteredSpecies, totalSpeciesCount, availableFamilies, availableGenera, vernacularOptions, DEFAULT_HABITS } from '$lib/stores/taxa.js';
 	import { folderHandleStore, pendingFolderHandleStore, selectFolder, reconnectFolder } from '$lib/stores/folder.js';
 	import { currentDatasetStore } from '$lib/stores/dataset.js';
+	import { VERSION } from '$lib/version.js';
 	import DatasetSelector from './DatasetSelector.svelte';
 	import HabitPills from './HabitPills.svelte';
 	import ThemeToggle from './ThemeToggle.svelte';
@@ -45,7 +46,9 @@
 			leafVenation: '',
 			leafMargin: '',
 			stipules: '',
-			exudate: ''
+			exudate: '',
+			stemArmature: '',
+			tendrils: ''
 		});
 	}
 
@@ -62,7 +65,7 @@
 
 <div class="flex flex-col gap-4">
 	<h1 class="text-xl font-bold tracking-tight text-gray-900 dark:text-gray-100">
-		GTSBU Plant ID Tool <span class="text-sm font-normal text-gray-400 dark:text-gray-500">v1.0</span>
+		deepZEN-curator <span class="text-sm font-normal text-gray-400 dark:text-gray-500">{VERSION}</span>
 	</h1>
 
 	<!-- Dataset selector -->
@@ -332,6 +335,46 @@
 			{#if $taxaStore}
 				{#each $taxaStore.allExudates as ex}
 					<option value={ex}>{ex}</option>
+				{/each}
+			{/if}
+		</select>
+	</div>
+
+	<!-- Stem armature filter -->
+	<div>
+		<label for="stem-armature-filter" class="mb-1 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+			Stem armature
+		</label>
+		<select
+			id="stem-armature-filter"
+			value={$filterStore.stemArmature}
+			onchange={handleTraitChange('stemArmature')}
+			class="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+		>
+			<option value="">All armatures</option>
+			{#if $taxaStore}
+				{#each $taxaStore.allStemArmatures as sa}
+					<option value={sa}>{sa}</option>
+				{/each}
+			{/if}
+		</select>
+	</div>
+
+	<!-- Tendrils filter -->
+	<div>
+		<label for="tendrils-filter" class="mb-1 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+			Tendrils
+		</label>
+		<select
+			id="tendrils-filter"
+			value={$filterStore.tendrils}
+			onchange={handleTraitChange('tendrils')}
+			class="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+		>
+			<option value="">All tendrils</option>
+			{#if $taxaStore}
+				{#each $taxaStore.allTendrils as td}
+					<option value={td}>{td}</option>
 				{/each}
 			{/if}
 		</select>
