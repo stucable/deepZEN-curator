@@ -40,6 +40,7 @@
 			order: '',
 			family: '',
 			genus: '',
+			clade: '',
 			vernacular: '',
 			habits: [...DEFAULT_HABITS],
 			leafArrangement: '',
@@ -146,248 +147,276 @@
 
 	<h2 class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Filters</h2>
 
+	<!-- Clade filter -->
+	{#if $taxaStore && $taxaStore.allClades.length > 1}
+		<div>
+			<label for="clade-filter" class="mb-1 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+				Clade
+			</label>
+			<select
+				id="clade-filter"
+				value={$filterStore.clade}
+				onchange={handleTraitChange('clade')}
+				class="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+			>
+				<option value="">All clades</option>
+				{#each $taxaStore.allClades as cl}
+					<option value={cl}>{cl} ({$filterOptionCounts.clade[cl] ?? 0})</option>
+				{/each}
+			</select>
+		</div>
+	{/if}
+
 	<!-- Order filter -->
-	<div>
-		<label for="order-filter" class="mb-1 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
-			Order
-		</label>
-		<select
-			id="order-filter"
-			value={$filterStore.order}
-			onchange={handleOrderChange}
-			class="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-		>
-			<option value="">All orders</option>
-			{#if $taxaStore}
+	{#if $taxaStore && $taxaStore.allOrders.length > 1}
+		<div>
+			<label for="order-filter" class="mb-1 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+				Order
+			</label>
+			<select
+				id="order-filter"
+				value={$filterStore.order}
+				onchange={handleOrderChange}
+				class="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+			>
+				<option value="">All orders</option>
 				{#each $taxaStore.allOrders as ord}
 					<option value={ord}>{ord} ({$filterOptionCounts.order[ord] ?? 0})</option>
 				{/each}
-			{/if}
-		</select>
-	</div>
+			</select>
+		</div>
+	{/if}
 
 	<!-- Family filter -->
-	<div>
-		<label for="family-filter" class="mb-1 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
-			Family
-		</label>
-		<select
-			id="family-filter"
-			value={$filterStore.family}
-			onchange={handleFamilyChange}
-			class="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-		>
-			<option value="">All families</option>
-			{#each $availableFamilies as fam}
-				<option value={fam}>{fam} ({$filterOptionCounts.family[fam] ?? 0})</option>
-			{/each}
-		</select>
-	</div>
+	{#if $taxaStore && $taxaStore.allFamilies.length > 1}
+		<div>
+			<label for="family-filter" class="mb-1 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+				Family
+			</label>
+			<select
+				id="family-filter"
+				value={$filterStore.family}
+				onchange={handleFamilyChange}
+				class="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+			>
+				<option value="">All families</option>
+				{#each $availableFamilies as fam}
+					<option value={fam}>{fam} ({$filterOptionCounts.family[fam] ?? 0})</option>
+				{/each}
+			</select>
+		</div>
+	{/if}
 
 	<!-- Genus filter -->
-	<div>
-		<label for="genus-filter" class="mb-1 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
-			Genus
-		</label>
-		<select
-			id="genus-filter"
-			value={$filterStore.genus}
-			onchange={handleGenusChange}
-			class="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-		>
-			<option value="">All genera</option>
-			{#each $availableGenera as gen}
-				<option value={gen}>{gen} ({$filterOptionCounts.genus[gen] ?? 0})</option>
-			{/each}
-		</select>
-	</div>
+	{#if $taxaStore && $taxaStore.allGenera.length > 1}
+		<div>
+			<label for="genus-filter" class="mb-1 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+				Genus
+			</label>
+			<select
+				id="genus-filter"
+				value={$filterStore.genus}
+				onchange={handleGenusChange}
+				class="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+			>
+				<option value="">All genera</option>
+				{#each $availableGenera as gen}
+					<option value={gen}>{gen} ({$filterOptionCounts.genus[gen] ?? 0})</option>
+				{/each}
+			</select>
+		</div>
+	{/if}
 
 	<!-- Vernacular name filter -->
-	<div>
-		<label for="vernacular-filter" class="mb-1 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
-			Vernacular name
-		</label>
-		<input
-			id="vernacular-filter"
-			type="text"
-			list="vernacular-options"
-			value={$filterStore.vernacular}
-			oninput={handleTraitChange('vernacular')}
-			placeholder="Type to search…"
-			class="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-		/>
-		<datalist id="vernacular-options">
-			{#each $vernacularOptions as name}
-				<option value={name}></option>
-			{/each}
-		</datalist>
-	</div>
+	{#if $vernacularOptions.length > 1}
+		<div>
+			<label for="vernacular-filter" class="mb-1 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+				Vernacular name
+			</label>
+			<input
+				id="vernacular-filter"
+				type="text"
+				list="vernacular-options"
+				value={$filterStore.vernacular}
+				oninput={handleTraitChange('vernacular')}
+				placeholder="Type to search…"
+				class="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+			/>
+			<datalist id="vernacular-options">
+				{#each $vernacularOptions as name}
+					<option value={name}></option>
+				{/each}
+			</datalist>
+		</div>
+	{/if}
 
 	<!-- Habit filter -->
-	<div>
-		<span class="mb-1 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Habit</span>
-		<HabitPills />
-	</div>
+	{#if $taxaStore && $taxaStore.allHabits.length > 1}
+		<div>
+			<span class="mb-1 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Habit</span>
+			<HabitPills />
+		</div>
+	{/if}
 
 	<!-- Leaf arrangement filter -->
-	<div>
-		<label for="leaf-arrangement-filter" class="mb-1 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
-			Leaf arrangement
-		</label>
-		<select
-			id="leaf-arrangement-filter"
-			value={$filterStore.leafArrangement}
-			onchange={handleTraitChange('leafArrangement')}
-			class="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-		>
-			<option value="">All arrangements</option>
-			{#if $taxaStore}
+	{#if $taxaStore && $taxaStore.allLeafArrangements.length > 1}
+		<div>
+			<label for="leaf-arrangement-filter" class="mb-1 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+				Leaf arrangement
+			</label>
+			<select
+				id="leaf-arrangement-filter"
+				value={$filterStore.leafArrangement}
+				onchange={handleTraitChange('leafArrangement')}
+				class="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+			>
+				<option value="">All arrangements</option>
 				{#each $taxaStore.allLeafArrangements as la}
 					<option value={la}>{la} ({$filterOptionCounts.leafArrangement[la] ?? 0})</option>
 				{/each}
-			{/if}
-		</select>
-	</div>
+			</select>
+		</div>
+	{/if}
 
 	<!-- Leaf form filter -->
-	<div>
-		<label for="leaf-form-filter" class="mb-1 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
-			Leaf form
-		</label>
-		<select
-			id="leaf-form-filter"
-			value={$filterStore.leafForm}
-			onchange={handleTraitChange('leafForm')}
-			class="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-		>
-			<option value="">All forms</option>
-			{#if $taxaStore}
+	{#if $taxaStore && $taxaStore.allLeafForms.length > 1}
+		<div>
+			<label for="leaf-form-filter" class="mb-1 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+				Leaf form
+			</label>
+			<select
+				id="leaf-form-filter"
+				value={$filterStore.leafForm}
+				onchange={handleTraitChange('leafForm')}
+				class="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+			>
+				<option value="">All forms</option>
 				{#each $taxaStore.allLeafForms as lf}
 					<option value={lf}>{lf} ({$filterOptionCounts.leafForm[lf] ?? 0})</option>
 				{/each}
-			{/if}
-		</select>
-	</div>
+			</select>
+		</div>
+	{/if}
 
 	<!-- Leaf venation filter -->
-	<div>
-		<label for="leaf-venation-filter" class="mb-1 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
-			Leaf venation
-		</label>
-		<select
-			id="leaf-venation-filter"
-			value={$filterStore.leafVenation}
-			onchange={handleTraitChange('leafVenation')}
-			class="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-		>
-			<option value="">All venations</option>
-			{#if $taxaStore}
+	{#if $taxaStore && $taxaStore.allLeafVenations.length > 1}
+		<div>
+			<label for="leaf-venation-filter" class="mb-1 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+				Leaf venation
+			</label>
+			<select
+				id="leaf-venation-filter"
+				value={$filterStore.leafVenation}
+				onchange={handleTraitChange('leafVenation')}
+				class="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+			>
+				<option value="">All venations</option>
 				{#each $taxaStore.allLeafVenations as lv}
 					<option value={lv}>{lv} ({$filterOptionCounts.leafVenation[lv] ?? 0})</option>
 				{/each}
-			{/if}
-		</select>
-	</div>
+			</select>
+		</div>
+	{/if}
 
 	<!-- Leaf margin filter -->
-	<div>
-		<label for="leaf-margin-filter" class="mb-1 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
-			Leaf margin
-		</label>
-		<select
-			id="leaf-margin-filter"
-			value={$filterStore.leafMargin}
-			onchange={handleTraitChange('leafMargin')}
-			class="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-		>
-			<option value="">All margins</option>
-			{#if $taxaStore}
+	{#if $taxaStore && $taxaStore.allLeafMargins.length > 1}
+		<div>
+			<label for="leaf-margin-filter" class="mb-1 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+				Leaf margin
+			</label>
+			<select
+				id="leaf-margin-filter"
+				value={$filterStore.leafMargin}
+				onchange={handleTraitChange('leafMargin')}
+				class="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+			>
+				<option value="">All margins</option>
 				{#each $taxaStore.allLeafMargins as lm}
 					<option value={lm}>{lm} ({$filterOptionCounts.leafMargin[lm] ?? 0})</option>
 				{/each}
-			{/if}
-		</select>
-	</div>
+			</select>
+		</div>
+	{/if}
 
 	<!-- Stipules filter -->
-	<div>
-		<label for="stipules-filter" class="mb-1 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
-			Stipules
-		</label>
-		<select
-			id="stipules-filter"
-			value={$filterStore.stipules}
-			onchange={handleTraitChange('stipules')}
-			class="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-		>
-			<option value="">All stipules</option>
-			{#if $taxaStore}
+	{#if $taxaStore && $taxaStore.allStipules.length > 1}
+		<div>
+			<label for="stipules-filter" class="mb-1 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+				Stipules
+			</label>
+			<select
+				id="stipules-filter"
+				value={$filterStore.stipules}
+				onchange={handleTraitChange('stipules')}
+				class="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+			>
+				<option value="">All stipules</option>
 				{#each $taxaStore.allStipules as st}
 					<option value={st}>{st} ({$filterOptionCounts.stipules[st] ?? 0})</option>
 				{/each}
-			{/if}
-		</select>
-	</div>
+			</select>
+		</div>
+	{/if}
 
 	<!-- Exudate filter -->
-	<div>
-		<label for="exudate-filter" class="mb-1 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
-			Exudate
-		</label>
-		<select
-			id="exudate-filter"
-			value={$filterStore.exudate}
-			onchange={handleTraitChange('exudate')}
-			class="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-		>
-			<option value="">All exudates</option>
-			{#if $taxaStore}
+	{#if $taxaStore && $taxaStore.allExudates.length > 1}
+		<div>
+			<label for="exudate-filter" class="mb-1 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+				Exudate
+			</label>
+			<select
+				id="exudate-filter"
+				value={$filterStore.exudate}
+				onchange={handleTraitChange('exudate')}
+				class="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+			>
+				<option value="">All exudates</option>
 				{#each $taxaStore.allExudates as ex}
 					<option value={ex}>{ex} ({$filterOptionCounts.exudate[ex] ?? 0})</option>
 				{/each}
-			{/if}
-		</select>
-	</div>
+			</select>
+		</div>
+	{/if}
 
 	<!-- Stem armature filter -->
-	<div>
-		<label for="stem-armature-filter" class="mb-1 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
-			Stem armature
-		</label>
-		<select
-			id="stem-armature-filter"
-			value={$filterStore.stemArmature}
-			onchange={handleTraitChange('stemArmature')}
-			class="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-		>
-			<option value="">All armatures</option>
-			{#if $taxaStore}
+	{#if $taxaStore && $taxaStore.allStemArmatures.length > 1}
+		<div>
+			<label for="stem-armature-filter" class="mb-1 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+				Stem armature
+			</label>
+			<select
+				id="stem-armature-filter"
+				value={$filterStore.stemArmature}
+				onchange={handleTraitChange('stemArmature')}
+				class="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+			>
+				<option value="">All armatures</option>
 				{#each $taxaStore.allStemArmatures as sa}
 					<option value={sa}>{sa} ({$filterOptionCounts.stemArmature[sa] ?? 0})</option>
 				{/each}
-			{/if}
-		</select>
-	</div>
+			</select>
+		</div>
+	{/if}
 
 	<!-- Tendrils filter -->
-	<div>
-		<label for="tendrils-filter" class="mb-1 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
-			Tendrils
-		</label>
-		<select
-			id="tendrils-filter"
-			value={$filterStore.tendrils}
-			onchange={handleTraitChange('tendrils')}
-			class="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-		>
-			<option value="">All tendrils</option>
-			{#if $taxaStore}
+	{#if $taxaStore && $taxaStore.allTendrils.length > 1}
+		<div>
+			<label for="tendrils-filter" class="mb-1 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+				Tendrils
+			</label>
+			<select
+				id="tendrils-filter"
+				value={$filterStore.tendrils}
+				onchange={handleTraitChange('tendrils')}
+				class="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+			>
+				<option value="">All tendrils</option>
 				{#each $taxaStore.allTendrils as td}
 					<option value={td}>{td} ({$filterOptionCounts.tendrils[td] ?? 0})</option>
 				{/each}
-			{/if}
-		</select>
-	</div>
+			</select>
+		</div>
+	{/if}
 
 	<!-- Clear filters -->
 	<button

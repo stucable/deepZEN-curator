@@ -24,11 +24,12 @@ Offline herbarium image browser for field botanists in Madagascar. Ships with mu
 ```
 src/lib/
   datasets.js        — dataset registry (id, label, csvPath)
-  components/        — Svelte 5 components (Sidebar, DatasetSelector, SpeciesGrid, SpeciesCard, HerbariumImage, Lightbox)
-  stores/            — Svelte stores (dataset.js, taxa.js, folder.js)
-  utils/             — CSV loading and data transformation (csv.js)
+  components/        — Svelte 5 components (Sidebar, DatasetSelector, SpeciesGrid, SpeciesCard, HerbariumImage, Lightbox, SortPills, HabitPills)
+  stores/            — Svelte stores (dataset.js, taxa.js, folder.js, theme.js)
+  utils/             — CSV loading + parsing (csv.js); thumbnail load/cache/generation pipeline (thumbnails.js)
 src/routes/          — Single page: +page.svelte with +layout.js (ssr=false, prerender=false)
 static/data/         — One CSV per dataset (copied to build/data/ at build time)
+scripts/             — Node-only tooling outside the SvelteKit build (generate-thumbnails.js)
 ```
 
 ### Data model (species object)
@@ -37,11 +38,19 @@ static/data/         — One CSV per dataset (copied to build/data/ at build tim
   taxonomicName,  // primary key and display label — never show FullName in UI
   vernacularName, // optional local name; shown in brackets after the scientific name
   family, genus, clade, order,
-  traits: { habit, leafArrangement, leafForm, leafVenation, leafMargin, stipules, exudate },
+  traits: { habit, leafArrangement, leafForm, leafVenation, leafMargin, stipules, exudate, stemArmature, tendrils },
   searchText,     // precomputed lowercase string (name + family + genus + vernacular) for future text search
   images: []      // array of CatalogueNumber strings
 }
 ```
+
+### Pre-sorted species arrays
+
+`parseSpeciesCsv` returns three sorted arrays alongside `speciesByName` — `sortedByName`, `sortedByFamily`, and `sortedByOrder` — built once at parse time using a single shared `Intl.Collator`. The `filteredSpecies` derived store picks one based on `sortStore` and just filters it; `Array.filter` preserves order so no runtime `.sort()` runs on filter changes. Adding a new sort mode means materialising another array in `csv.js` and adding a branch in `filteredSpecies`.
+
+### Sidebar option counts
+
+`filterOptionCounts` (`stores/taxa.js`) is a single pass over species, not the per-field/per-option nested filter it used to be. For each species it counts how many active filters it fails: 0 → contributes to every counted field; exactly 1 → contributes only to the failing field; ≥2 → skipped. The `optionsForSpecies` helper preserves two semantic quirks from `matchesField`: empty-habits species count under every habit option, and stipules='absent' species count under both 'absent' and 'caducous' (since selecting 'caducous' surfaces 'absent' species too). Equivalence with the old algorithm is verified manually when the predicate logic changes.
 
 ## Conventions
 
@@ -51,7 +60,7 @@ static/data/         — One CSV per dataset (copied to build/data/ at build tim
 - **Tailwind utility classes only** — no `<style>` blocks. `app.css` holds the Tailwind import plus a single `.font-species` utility for the system-serif italics on species names.
 - **Image filenames** are always `CatalogueNumber + ".jpg"`. The CSV `CatalogueNumber` column includes any suffixes (e.g. `K000175461_a`).
 - **TaxonomicName** is always the display label. Never show `FullName` in the UI.
-- **Taxonomic sort order**: Order → Family → Genus → TaxonomicName (not plain alphabetical).
+- **Sort modes**: three options exposed via `SortPills` — `family` (Family → Genus → TaxonomicName, the default), `order` (Order → Family → Genus → TaxonomicName), and `name` (plain alphabetical by TaxonomicName). All modes share Family → Genus → Name as lower tiers so cards stay grouped by genus regardless of mode. Default lives in `stores/taxa.js:sortStore`.
 - **Chrome desktop only** — no Firefox/Safari fallbacks for File System Access API.
 - **English UI** — no i18n framework.
 - **Emerald is the single accent colour** across all datasets.
@@ -59,9 +68,10 @@ static/data/         — One CSV per dataset (copied to build/data/ at build tim
 ## Build & Run
 
 ```bash
-npm run dev       # dev server with HMR
-npm run build     # static build → build/
-npm run preview   # preview the production build
+npm run dev                          # dev server with HMR
+npm run build                        # static build → build/
+npm run preview                      # preview the production build
+npm run prep-thumbs -- <imageFolder> # pre-generate <folder>/thumbnails/ (run before shipping a drive)
 ```
 
 Deployment: copy `build/`, `start.bat`, `start.sh`, and `README.txt` to target machine. User double-clicks `start.bat` (requires Python installed).

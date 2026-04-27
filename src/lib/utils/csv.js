@@ -51,6 +51,7 @@ export function parseSpeciesCsv(text) {
 	const orderSet = new Set();
 	const familySet = new Set();
 	const genusSet = new Set();
+	const cladeSet = new Set();
 	const habitSet = new Set();
 	const leafArrangementSet = new Set();
 	const leafFormSet = new Set();
@@ -67,6 +68,7 @@ export function parseSpeciesCsv(text) {
 
 		const family = row.Family?.trim() || '';
 		const genus = row.Genus?.trim() || '';
+		const clade = row.Clade?.trim() || '';
 		const catalogueNumber = row.CatalogueNumber?.trim() || '';
 		const order = row.Order?.trim() || '';
 		const habit = normalizeHabits(row.Habit);
@@ -83,6 +85,7 @@ export function parseSpeciesCsv(text) {
 		orderSet.add(order);
 		familySet.add(family);
 		genusSet.add(genus);
+		if (clade) cladeSet.add(clade);
 		habit.forEach((h) => habitSet.add(h));
 		if (leafArrangement) leafArrangementSet.add(leafArrangement);
 		if (leafForm) leafFormSet.add(leafForm);
@@ -99,7 +102,7 @@ export function parseSpeciesCsv(text) {
 				vernacularName,
 				family,
 				genus,
-				clade: row.Clade?.trim() || '',
+				clade,
 				order,
 				traits: {
 					habit,
@@ -112,7 +115,7 @@ export function parseSpeciesCsv(text) {
 					stemArmature,
 					tendrils
 				},
-				searchText: [name, family, genus, vernacularName].join(' ').toLowerCase(),
+				searchText: [name, family, genus, clade, vernacularName].join(' ').toLowerCase(),
 				images: []
 			};
 		}
@@ -129,6 +132,7 @@ export function parseSpeciesCsv(text) {
 	const allOrders = [...orderSet].filter(Boolean).sort();
 	const allFamilies = [...familySet].filter(Boolean).sort();
 	const allGenera = [...genusSet].filter(Boolean).sort();
+	const allClades = [...cladeSet].sort();
 	const allHabits = [...habitSet].sort();
 	const allLeafArrangements = [...leafArrangementSet].sort();
 	const allLeafForms = [...leafFormSet].sort();
@@ -163,6 +167,7 @@ export function parseSpeciesCsv(text) {
 		allOrders,
 		allFamilies,
 		allGenera,
+		allClades,
 		allHabits,
 		allLeafArrangements,
 		allLeafForms,

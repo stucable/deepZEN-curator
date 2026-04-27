@@ -30,17 +30,19 @@ export const taxaSourceFilenameStore = writable(null);
 export const DEFAULT_HABITS = ['tree', 'shrub'];
 
 /**
- * Card sort order. 'order' (Order→Family→Genus→Name) is the taxonomic default
- * matching how botanical references are organised; 'family' drops the Order
- * tier; 'name' is plain alphabetical by TaxonomicName.
+ * Card sort order. 'family' (Family→Genus→Name) is the default — botanists
+ * scanning a field-flora dataset typically know the family before the order;
+ * 'order' adds an Order tier above Family for cross-order comparisons; 'name'
+ * is plain alphabetical by TaxonomicName.
  */
-export const sortStore = writable('order');
+export const sortStore = writable('family');
 
 /** Active filter state. */
 export const filterStore = writable({
 	order: '',
 	family: '',
 	genus: '',
+	clade: '',
 	vernacular: '',
 	habits: [...DEFAULT_HABITS],
 	leafArrangement: '',
@@ -63,6 +65,7 @@ function matchesField(species, fieldId, value) {
 		case 'order': return species.order === value;
 		case 'family': return species.family === value;
 		case 'genus': return species.genus === value;
+		case 'clade': return species.clade === value;
 		case 'vernacular': return species.vernacularName === value;
 		case 'habits':
 			return species.traits.habit.length === 0 ||
@@ -92,7 +95,7 @@ function isFilterActive(fieldId, filterValue) {
 }
 
 const FILTER_FIELDS = [
-	'order', 'family', 'genus', 'vernacular', 'habits',
+	'order', 'family', 'genus', 'clade', 'vernacular', 'habits',
 	'leafArrangement', 'leafForm', 'leafVenation', 'leafMargin',
 	'stipules', 'exudate', 'stemArmature', 'tendrils'
 ];
@@ -204,6 +207,7 @@ const FIELD_TO_OPTION_SOURCE = {
 	order: 'allOrders',
 	family: 'allFamilies',
 	genus: 'allGenera',
+	clade: 'allClades',
 	leafArrangement: 'allLeafArrangements',
 	leafForm: 'allLeafForms',
 	leafVenation: 'allLeafVenations',
@@ -222,6 +226,7 @@ function fieldValue(s, field) {
 		case 'order': return s.order;
 		case 'family': return s.family;
 		case 'genus': return s.genus;
+		case 'clade': return s.clade;
 		case 'leafArrangement': return s.traits.leafArrangement;
 		case 'leafForm': return s.traits.leafForm;
 		case 'leafVenation': return s.traits.leafVenation;
