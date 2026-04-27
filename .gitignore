@@ -40,9 +40,11 @@ desktop.ini
 
 # Claude Code (user-specific, do not share)
 .claude/
+CLAUDE.md
 
 # Internal design notes (not for public repo)
 Codex_architecture.md
+docs/curation-roadmap.md
 
 # Local scratch / one-off notes (not for the repo)
 data-files/
