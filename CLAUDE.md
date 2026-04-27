@@ -99,6 +99,28 @@ If a registry entry points at a CSV that doesn't exist yet (e.g. the Ranomafana 
 
 Image folder handles are stored in IndexedDB under `imageFolderHandle:{datasetId}`. Switching datasets auto-restores that dataset's last folder. Existing installs upgrading from the single-key (`imageFolderHandle`) layout are migrated once on first post-upgrade load; no user action required.
 
+### Thumbnails
+
+Cards show 192×192 thumbs; the lightbox shows full-resolution. Loading a thumb is a three-step fall-through (`src/lib/utils/thumbnails.js:loadThumbnail`):
+
+1. **Disk thumb** — `<imageFolder>/thumbnails/<CatalogueNumber>.jpg`. Pre-built; zero CPU; preferred. The `thumbnails/` directory handle is memoised per folderHandle in a WeakMap so we don't re-resolve it per card.
+2. **IndexedDB cache** — keyed `thumb:{datasetId}:{catalogueNumber}`, value `{ blob, lastModified }`. Validated against the source file's `lastModified` (cheap — `getFile()` doesn't read bytes), so replacing an image on disk transparently invalidates its cached thumb.
+3. **Generate locally** — decode the full-res JPEG via `createImageBitmap`, downscale to max-edge 384 with high-quality canvas resampling, encode as JPEG quality 0.8, store in IndexedDB. Gated by a 4-slot semaphore so a 50-card filter result doesn't trigger 50 simultaneous full-res decodes.
+
+The lightbox deliberately bypasses this and reads the full-resolution source — zoom up to 10× needs the original pixels.
+
+#### Hard-drive prep workflow
+
+When prepping an image folder for a new field deployment, run the included Node script before sending the drive:
+
+```
+npm run prep-thumbs -- /path/to/AnkarafantsikaImages
+```
+
+This populates `<folder>/thumbnails/<basename>.jpg` for every `*.jpg` directly in the folder. Idempotent (skips files where the thumb is newer than its source), so re-runs after adding new specimens are cheap. Uses `sharp` (devDependency) — fast native image processing. Optional flags `--max-edge 384 --quality 80` if you ever need to tune.
+
+For drives already in the field without pre-built thumbnails, the app falls back to step 2/3 above. The first scroll through the dataset takes a CPU hit while thumbs are generated and cached; subsequent sessions are instant. No user action needed.
+
 ### Habit filter
 
 Canonical habit vocabulary: `tree`, `shrub`, `herb`, `liana`, `epiphyte` (lowercase singular). Each species carries `traits.habit` as an array of canonical values — a row with `tree;shrub` in the CSV becomes `['tree', 'shrub']`. Normalisation at parse time (`csv.js:normalizeHabits`) splits on `;`, trims + lowercases each token, remaps via `HABIT_ALIASES` (currently `{ climber: 'liana' }` — extend this table when new synonyms appear), then `startsWith`-matches against `KNOWN_HABITS` so `Tree`/`trees`/`TREES` all collapse to `tree`. Unknown tokens pass through unchanged to avoid silent miscategorisation.

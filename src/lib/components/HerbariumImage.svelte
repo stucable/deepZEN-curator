@@ -1,5 +1,7 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
+	import { currentDatasetStore } from '$lib/stores/dataset.js';
+	import { loadThumbnail } from '$lib/utils/thumbnails.js';
 
 	let { catalogueNumber, folderHandle = null, onclick = () => {} } = $props();
 
@@ -34,10 +36,11 @@
 	});
 
 	async function loadImage() {
+		const datasetId = $currentDatasetStore?.id;
+		if (!datasetId) return;
 		try {
-			const fileHandle = await folderHandle.getFileHandle(`${catalogueNumber}.jpg`);
-			const file = await fileHandle.getFile();
-			imgSrc = URL.createObjectURL(file);
+			const blob = await loadThumbnail(folderHandle, datasetId, catalogueNumber);
+			imgSrc = URL.createObjectURL(blob);
 		} catch {
 			error = true;
 			console.warn(`Image not found: ${catalogueNumber}.jpg`);
@@ -56,6 +59,7 @@
 		<img
 			src={imgSrc}
 			alt={catalogueNumber}
+			decoding="async"
 			class="h-full w-full object-cover"
 		/>
 	{:else if error}

@@ -110,27 +110,20 @@ function applyFilters(speciesArr, $filter, exceptField = null) {
 
 /**
  * Derived: species array filtered by current filter selection, sorted per the
- * active `sortStore` mode. Genus is always a tiebreaker within Family so cards
- * within the same family stay grouped by genus regardless of mode.
+ * active `sortStore` mode. Sources from one of three pre-sorted arrays built
+ * at parse time; Array.filter preserves order so no runtime sort is needed.
  */
 export const filteredSpecies = derived(
 	[taxaStore, filterStore, sortStore],
 	([$taxa, $filter, $sort]) => {
 		if (!$taxa) return [];
 
-		const species = applyFilters(Object.values($taxa.speciesByName), $filter);
+		const source =
+			$sort === 'name' ? $taxa.sortedByName :
+			$sort === 'family' ? $taxa.sortedByFamily :
+			$taxa.sortedByOrder;
 
-		const byName = (a, b) => a.taxonomicName.localeCompare(b.taxonomicName);
-		const byFamily = (a, b) =>
-			a.family.localeCompare(b.family) ||
-			a.genus.localeCompare(b.genus) ||
-			byName(a, b);
-		const byOrder = (a, b) => a.order.localeCompare(b.order) || byFamily(a, b);
-
-		const cmp = $sort === 'name' ? byName : $sort === 'family' ? byFamily : byOrder;
-		species.sort(cmp);
-
-		return species;
+		return applyFilters(source, $filter);
 	}
 );
 
@@ -223,11 +216,59 @@ const FIELD_TO_OPTION_SOURCE = {
 
 const HABIT_IDS = ['tree', 'shrub', 'herb', 'liana', 'epiphyte'];
 
+/** Read the species's value for a given filter field. Returns '' for traits we don't track. */
+function fieldValue(s, field) {
+	switch (field) {
+		case 'order': return s.order;
+		case 'family': return s.family;
+		case 'genus': return s.genus;
+		case 'leafArrangement': return s.traits.leafArrangement;
+		case 'leafForm': return s.traits.leafForm;
+		case 'leafVenation': return s.traits.leafVenation;
+		case 'leafMargin': return s.traits.leafMargin;
+		case 'stipules': return s.traits.stipules;
+		case 'exudate': return s.traits.exudate;
+		case 'stemArmature': return s.traits.stemArmature;
+		case 'tendrils': return s.traits.tendrils;
+		default: return '';
+	}
+}
+
+/**
+ * Yield the option keys this species contributes to under `field`. Mirrors the
+ * quirks in `matchesField`: a species with empty habits matches every habit
+ * selection, and a species with stipules='absent' counts under both 'absent'
+ * and 'caducous' (since selecting 'caducous' surfaces 'absent' species too).
+ */
+function* optionsForSpecies(s, field) {
+	if (field === 'habits') {
+		if (s.traits.habit.length === 0) {
+			yield* HABIT_IDS;
+			return;
+		}
+		for (const h of s.traits.habit) yield h;
+		return;
+	}
+	const v = fieldValue(s, field);
+	if (!v) return;
+	if (field === 'stipules' && v === 'absent') {
+		yield 'absent';
+		yield 'caducous';
+		return;
+	}
+	yield v;
+}
+
 /**
  * Derived: per-field, per-option count of species that would be visible if
  * this option were the sole selection for its field (all other filters still
  * applied). Powers the "(N)" labels next to each sidebar dropdown option and
  * habit pill. `_all` is the count if the field's filter were cleared.
+ *
+ * Single-pass O(N × F) over species. For each species, count how many active
+ * filters it fails: if 0 it contributes to every counted field's `_all` and
+ * matching option(s); if exactly 1 it contributes only to the failing field
+ * (and only if that field is itself counted); if ≥2 it contributes to nothing.
  */
 export const filterOptionCounts = derived(
 	[taxaStore, filterStore],
@@ -238,20 +279,37 @@ export const filterOptionCounts = derived(
 		}
 		if (!$taxa) return result;
 
-		const allSpecies = Object.values($taxa.speciesByName);
-
+		// Pre-create option buckets so dropdowns still show options with zero matches.
 		for (const [field, sourceKey] of Object.entries(FIELD_TO_OPTION_SOURCE)) {
-			const pool = applyFilters(allSpecies, $filter, field);
-			const bucket = { _all: pool.length };
 			for (const value of $taxa[sourceKey] ?? []) {
-				bucket[value] = pool.filter((s) => matchesField(s, field, value)).length;
+				result[field][value] = 0;
 			}
-			result[field] = bucket;
 		}
+		for (const h of HABIT_IDS) result.habits[h] = 0;
 
-		const habitPool = applyFilters(allSpecies, $filter, 'habits');
-		for (const h of HABIT_IDS) {
-			result.habits[h] = habitPool.filter((s) => matchesField(s, 'habits', [h])).length;
+		const activeFields = FILTER_FIELDS.filter((f) => isFilterActive(f, $filter[f]));
+		const countedFields = [...Object.keys(FIELD_TO_OPTION_SOURCE), 'habits'];
+
+		for (const s of Object.values($taxa.speciesByName)) {
+			let failCount = 0;
+			let failedField = null;
+			for (const f of activeFields) {
+				if (!matchesField(s, f, $filter[f])) {
+					failCount++;
+					if (failCount > 1) break;
+					failedField = f;
+				}
+			}
+			if (failCount > 1) continue;
+
+			for (const cf of countedFields) {
+				if (failCount === 1 && cf !== failedField) continue;
+				const bucket = result[cf];
+				if (cf !== 'habits') bucket._all++;
+				for (const opt of optionsForSpecies(s, cf)) {
+					if (opt in bucket) bucket[opt]++;
+				}
+			}
 		}
 
 		return result;

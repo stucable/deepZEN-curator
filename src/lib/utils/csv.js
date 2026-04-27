@@ -139,8 +139,27 @@ export function parseSpeciesCsv(text) {
 	const allStemArmatures = [...stemArmatureSet].sort();
 	const allTendrils = [...tendrilsSet].sort();
 
+	// Pre-sort once at parse time so the filtered-species derived store can
+	// just pick a source and filter it (Array.filter preserves order). A single
+	// reused Intl.Collator is ~10× faster than naked localeCompare which
+	// allocates a fresh collator per call.
+	const collator = new Intl.Collator(undefined, { sensitivity: 'variant' });
+	const speciesArray = Object.values(speciesByName);
+	const cmpName = (a, b) => collator.compare(a.taxonomicName, b.taxonomicName);
+	const cmpFamily = (a, b) =>
+		collator.compare(a.family, b.family) ||
+		collator.compare(a.genus, b.genus) ||
+		cmpName(a, b);
+	const cmpOrder = (a, b) => collator.compare(a.order, b.order) || cmpFamily(a, b);
+	const sortedByName = [...speciesArray].sort(cmpName);
+	const sortedByFamily = [...speciesArray].sort(cmpFamily);
+	const sortedByOrder = [...speciesArray].sort(cmpOrder);
+
 	return {
 		speciesByName,
+		sortedByName,
+		sortedByFamily,
+		sortedByOrder,
 		allOrders,
 		allFamilies,
 		allGenera,

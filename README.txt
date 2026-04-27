@@ -28,10 +28,38 @@ QUICK START (Windows 11)
 7. Species cards will populate with thumbnails. Click any thumbnail to
    view the full image. Use the arrow keys in the lightbox to flip
    through images; press Escape to close.
+   (The first scroll-through is slow — see FIRST USE IS SLOW below.)
 
 Each dataset's image-folder choice is remembered between sessions. If
 Chrome forgets (e.g. after a browser reset), just click "Reconnect" or
 "Select image folder" again.
+
+
+FIRST USE IS SLOW (THIS IS NORMAL)
+----------------------------------
+The first time you scroll through a dataset, the app reads your full-
+size herbarium .jpg files (often 5+ MB each), shrinks them down to
+small thumbnails, and saves those thumbnails inside Chrome. Expect
+the first scroll-through to feel sluggish — each thumbnail takes a
+moment to generate, and the disk and CPU work hard. On a typical
+work laptop, plan for roughly 2 minutes to pre-warm Ankarafantsika
+and roughly 5 minutes for Ranomafana (Ranomafana has more specimens).
+Older laptops or slow external drives can take longer.
+
+After that, every later session is fast: Chrome reuses the saved
+thumbnails instead of re-reading the big .jpg files. Closing Chrome,
+restarting the laptop, or coming back the next day all keep the
+saved thumbnails — you only pay the slow cost once per dataset.
+
+A few practical notes:
+- To pre-warm the whole dataset, just scroll from top to bottom once
+  while you have time. From then on, browsing is snappy.
+- If you scroll partway and stop, only the thumbnails you have seen
+  are saved; the rest are generated the next time you scroll past
+  them.
+- If a future update ships a new image (e.g. an updated specimen
+  scan), only that one image will regenerate its thumbnail on next
+  view; everything else stays fast.
 
 
 IF PYTHON IS NOT INSTALLED
