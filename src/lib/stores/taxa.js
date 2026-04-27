@@ -29,6 +29,13 @@ export const taxaSourceFilenameStore = writable(null);
  */
 export const DEFAULT_HABITS = ['tree', 'shrub'];
 
+/**
+ * Card sort order. 'order' (Order→Family→Genus→Name) is the taxonomic default
+ * matching how botanical references are organised; 'family' drops the Order
+ * tier; 'name' is plain alphabetical by TaxonomicName.
+ */
+export const sortStore = writable('order');
+
 /** Active filter state. */
 export const filterStore = writable({
 	order: '',
@@ -102,22 +109,26 @@ function applyFilters(speciesArr, $filter, exceptField = null) {
 }
 
 /**
- * Derived: species array filtered by current family/genus selection,
- * sorted taxonomically (Family → Genus → TaxonomicName).
+ * Derived: species array filtered by current filter selection, sorted per the
+ * active `sortStore` mode. Genus is always a tiebreaker within Family so cards
+ * within the same family stay grouped by genus regardless of mode.
  */
 export const filteredSpecies = derived(
-	[taxaStore, filterStore],
-	([$taxa, $filter]) => {
+	[taxaStore, filterStore, sortStore],
+	([$taxa, $filter, $sort]) => {
 		if (!$taxa) return [];
 
 		const species = applyFilters(Object.values($taxa.speciesByName), $filter);
 
-		species.sort((a, b) =>
-			a.order.localeCompare(b.order) ||
+		const byName = (a, b) => a.taxonomicName.localeCompare(b.taxonomicName);
+		const byFamily = (a, b) =>
 			a.family.localeCompare(b.family) ||
 			a.genus.localeCompare(b.genus) ||
-			a.taxonomicName.localeCompare(b.taxonomicName)
-		);
+			byName(a, b);
+		const byOrder = (a, b) => a.order.localeCompare(b.order) || byFamily(a, b);
+
+		const cmp = $sort === 'name' ? byName : $sort === 'family' ? byFamily : byOrder;
+		species.sort(cmp);
 
 		return species;
 	}

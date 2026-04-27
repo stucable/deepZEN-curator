@@ -5,6 +5,7 @@
 	import { VERSION } from '$lib/version.js';
 	import DatasetSelector from './DatasetSelector.svelte';
 	import HabitPills from './HabitPills.svelte';
+	import SortPills from './SortPills.svelte';
 	import ThemeToggle from './ThemeToggle.svelte';
 
 	function handleOrderChange(e) {
@@ -131,6 +132,14 @@
 				Could not parse <code class="font-mono">{$csvLoadErrorStore.filename}</code> — {$csvLoadErrorStore.reason}. Still showing the previous data.
 			</div>
 		{/if}
+	</div>
+
+	<hr class="border-gray-200 dark:border-gray-700" />
+
+	<!-- Sort order -->
+	<div>
+		<h2 class="mb-1 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Sort by</h2>
+		<SortPills />
 	</div>
 
 	<hr class="border-gray-200 dark:border-gray-700" />

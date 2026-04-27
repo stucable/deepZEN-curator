@@ -1,24 +1,36 @@
-deepZEN-curator  —  v0.2  (Ankarafantsika, 2026-04-22)
-=======================================================
+deepZEN-curator  —  v0.3  (Ankarafantsika + Ranomafana, 2026-04-23)
+===================================================================
 
-Offline herbarium image browser for field botanists at Ankarafantsika.
+Offline herbarium image browser for field botanists in Madagascar.
+Ships with two datasets — Ankarafantsika and Ranomafana — switchable
+from the sidebar at runtime.
 Runs entirely on your laptop — no internet needed once you have the files.
 
 
 QUICK START (Windows 11)
 ------------------------
 1. Unzip this folder somewhere convenient (e.g. your Desktop).
+   If the file inside is called "start.bat.txt" (it's renamed that
+   way so email scanners let the zip through), right-click it →
+   Rename → delete the trailing ".txt" so it becomes "start.bat".
+   If Windows hides the extension, turn on "File name extensions"
+   in File Explorer's View menu first.
 2. Double-click start.bat.
    - If Windows SmartScreen blocks it, click "More info" then "Run anyway".
 3. Google Chrome opens at http://localhost:5173.
-4. In the left sidebar, click "Select image folder".
-5. Browse to your folder of Ankarafantsika herbarium .jpg images.
-6. Species cards will populate with thumbnails. Click any thumbnail to
+4. At the top of the sidebar, pick the dataset you want to browse
+   (Ankarafantsika is selected by default).
+5. Click "Select image folder" and browse to the folder of .jpg
+   images for that dataset.
+6. To use the other dataset, click it in the selector and pick its
+   image folder the same way. Each dataset remembers its own folder,
+   so you only have to pick each one once.
+7. Species cards will populate with thumbnails. Click any thumbnail to
    view the full image. Use the arrow keys in the lightbox to flip
    through images; press Escape to close.
 
-Your image-folder choice is remembered between sessions. If Chrome
-forgets (e.g. after a browser reset), just click "Reconnect" or
+Each dataset's image-folder choice is remembered between sessions. If
+Chrome forgets (e.g. after a browser reset), just click "Reconnect" or
 "Select image folder" again.
 
 
@@ -61,15 +73,23 @@ Each tester can maintain a personal copy of the CSV — add vernacular
 names, fix typos, add new species rows — without waiting for a rebuild.
 The app picks up your personal copy automatically.
 
-How:
+Each dataset has its own CSV and its own image folder, so personal
+edits for Ankarafantsika live in the Ankarafantsika image folder,
+and Ranomafana edits live in the Ranomafana image folder. You can
+personalise one, both, or neither — your choice.
 
-1. In the app folder, open build\data\. Copy the file
-   Ankarafantsika_herbarium_images_260422.csv
-   into your image folder (the same folder you selected in step 4 of
-   Quick Start, next to the .jpg files).
+How (repeat for each dataset you want to personalise):
 
-2. Rename the copy to
-   Ankarafantsika_herbarium_images_<YourName>.csv
+1. In the app folder, open build\data\. Copy the shipped CSV for the
+   dataset you want to edit into that dataset's image folder (next
+   to its .jpg files):
+     Ankarafantsika_herbarium_images_260422.csv
+     Ranomafana_herbarium_images_260423.csv
+
+2. Rename the copy so it starts with the same prefix as the shipped
+   file, followed by your name:
+     Ankarafantsika_herbarium_images_<YourName>.csv
+     Ranomafana_herbarium_images_<YourName>.csv
    For example: Ankarafantsika_herbarium_images_Johny.csv
    (Capitalisation does not matter.)
 
@@ -121,7 +141,9 @@ Columns the app reads (case-sensitive):
 
 Any other columns are ignored.
 
-Shipped data file: build\data\Ankarafantsika_herbarium_images_260422.csv
+Shipped data files:
+  build\data\Ankarafantsika_herbarium_images_260422.csv
+  build\data\Ranomafana_herbarium_images_260423.csv
 
 
 CHROME ONLY
@@ -182,7 +204,7 @@ REPORTING ISSUES / GETTING UPDATES
 ----------------------------------
 - If something looks wrong (missing species, broken image, weird
   filter behaviour), email Stuart with a screenshot and the
-  version number at the top of this file (v0.2).
+  version number at the top of this file (v0.3).
 - New versions will arrive by email as a small zip. Unzip over
   the old folder (or delete the old folder first to avoid stale
   cached files), then double-click start.bat as before.

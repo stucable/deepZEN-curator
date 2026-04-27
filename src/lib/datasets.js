@@ -11,6 +11,11 @@ export const datasets = [
 		id: 'ankarafantsika',
 		label: 'Ankarafantsika',
 		csvPath: '/data/Ankarafantsika_herbarium_images_260422.csv'
+	},
+	{
+		id: 'ranomafana',
+		label: 'Ranomafana',
+		csvPath: '/data/Ranomafana_herbarium_images_260423.csv'
 	}
 ];
 
