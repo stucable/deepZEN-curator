@@ -1,10 +1,20 @@
 import Papa from 'papaparse';
 
 /** Canonical growth-habit vocabulary (lowercase singular). CSV values are matched against this. */
-const KNOWN_HABITS = ['tree', 'shrub', 'herb', 'liana', 'epiphyte'];
+export const KNOWN_HABITS = ['tree', 'shrub', 'herb', 'liana', 'epiphyte'];
 
 /** CSV synonyms mapped onto canonical habits. Extend here when new aliases appear. */
 const HABIT_ALIASES = { climber: 'liana' };
+
+const IGNORED_HABIT_TOKENS = new Set([
+	// Source spreadsheets occasionally contain taxonomic-rank placeholders here.
+	'species',
+	// Lithophyte is not exposed as a UI habit; mixed values like
+	// "lithophyte or epiphyte" still retain the epiphyte token.
+	'lithophyte'
+]);
+
+const REQUIRED_COLUMNS = ['TaxonomicName', 'CatalogueNumber'];
 
 /**
  * Thrown by parseSpeciesCsv when the input doesn't look like our schema
@@ -22,17 +32,38 @@ export class CsvSchemaError extends Error {
  * Normalises a raw CSV habit cell into a deduped array of canonical habits.
  * Splits on ';' so multi-habit rows like 'tree;shrub' or 'climber;shrub;tree'
  * yield every relevant canonical value. Each token is trimmed + lowercased,
- * remapped via HABIT_ALIASES (e.g. 'climber' → 'liana'), then startsWith-matched
- * against KNOWN_HABITS so 'Tree'/'Trees'/'TREES' all collapse to 'tree'.
- * Unknown tokens pass through unchanged to avoid silent miscategorisation.
+ * remapped via HABIT_ALIASES (e.g. 'climber' → 'liana'), then matched against
+ * KNOWN_HABITS so 'Tree'/'Trees'/'TREES' all collapse to 'tree'. Unsupported
+ * tokens are ignored so the UI vocabulary and filter predicates stay aligned.
  */
-function normalizeHabits(raw) {
+function cleanHabitToken(token) {
+	return token
+		.trim()
+		.toLowerCase()
+		.replace(/^"+|"+$/g, '')
+		.trim();
+}
+
+function normalizeHabitToken(token) {
+	const cleaned = cleanHabitToken(token);
+	if (!cleaned || IGNORED_HABIT_TOKENS.has(cleaned)) return null;
+
+	const aliased = HABIT_ALIASES[cleaned] ?? cleaned;
+	const known = KNOWN_HABITS.find((habit) =>
+		aliased === habit ||
+		aliased === `${habit}s` ||
+		aliased.startsWith(`${habit} `) ||
+		aliased.startsWith(`${habit}-`)
+	);
+	return known ?? null;
+}
+
+export function normalizeHabits(raw) {
 	if (!raw) return [];
 	const canonical = raw
-		.split(';')
-		.map((s) => s.trim().toLowerCase())
-		.filter(Boolean)
-		.map((token) => HABIT_ALIASES[token] ?? KNOWN_HABITS.find((h) => token.startsWith(h)) ?? token);
+		.split(/\s*(?:;|,|\bor\b)\s*/i)
+		.map(normalizeHabitToken)
+		.filter(Boolean);
 	return [...new Set(canonical)];
 }
 
@@ -42,10 +73,25 @@ function normalizeHabits(raw) {
  * @param {string} text - raw CSV text
  */
 export function parseSpeciesCsv(text) {
-	const { data } = Papa.parse(text, {
+	const parsed = Papa.parse(text, {
 		header: true,
-		skipEmptyLines: true
+		skipEmptyLines: true,
+		transformHeader: (header) => header.trim().replace(/^\uFEFF/, '')
 	});
+	const { data, errors, meta } = parsed;
+
+	const fatalErrors = errors.filter((e) => e.type !== 'FieldMismatch');
+	if (fatalErrors.length > 0) {
+		const first = fatalErrors[0];
+		const atRow = typeof first.row === 'number' ? ` at row ${first.row + 1}` : '';
+		throw new CsvSchemaError(`${first.message}${atRow}`);
+	}
+
+	const fields = new Set(meta.fields ?? []);
+	const missing = REQUIRED_COLUMNS.filter((name) => !fields.has(name));
+	if (missing.length > 0) {
+		throw new CsvSchemaError(`Missing required column(s): ${missing.join(', ')}`);
+	}
 
 	const speciesByName = {};
 	const orderSet = new Set();
@@ -186,6 +232,9 @@ export function parseSpeciesCsv(text) {
  */
 export async function loadSpeciesData(csvPath) {
 	const res = await fetch(csvPath);
+	if (!res.ok) {
+		throw new CsvSchemaError(`Could not load ${csvPath} (${res.status} ${res.statusText})`);
+	}
 	const text = await res.text();
 	return parseSpeciesCsv(text);
 }

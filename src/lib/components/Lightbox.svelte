@@ -11,7 +11,8 @@
 	let imgSrc = $state(null);
 	let loading = $state(true);
 	let overlayEl;
-	let objectUrls = [];
+	let objectUrl = null;
+	let imageLoadGeneration = 0;
 
 	// Zoom & pan state
 	const ZOOM_STEPS = [1, 1.5, 2, 3, 4, 6, 8, 10];
@@ -37,36 +38,56 @@
 	});
 
 	onDestroy(() => {
-		for (const url of objectUrls) {
-			URL.revokeObjectURL(url);
-		}
+		imageLoadGeneration++;
+		clearImageUrl();
 	});
 
 	$effect(() => {
-		// Load image and reset zoom whenever currentIndex changes
-		void currentIndex;
+		const folder = folderHandle;
+		const catalogue = images[currentIndex];
+		const generation = ++imageLoadGeneration;
+
 		resetZoom();
-		loadCurrentImage();
+		clearImageUrl();
+		loadCurrentImage({ folder, catalogue, generation });
 	});
 
-	async function loadCurrentImage() {
-		if (!folderHandle || !images[currentIndex]) {
-			imgSrc = null;
+	function clearImageUrl() {
+		if (objectUrl) {
+			URL.revokeObjectURL(objectUrl);
+			objectUrl = null;
+		}
+		imgSrc = null;
+	}
+
+	function isCurrentImageLoad(generation) {
+		return generation === imageLoadGeneration;
+	}
+
+	async function loadCurrentImage({ folder, catalogue, generation }) {
+		if (!folder || !catalogue) {
 			loading = false;
 			return;
 		}
 		loading = true;
-		imgSrc = null;
 		try {
-			const fileHandle = await folderHandle.getFileHandle(`${images[currentIndex]}.jpg`);
+			const fileHandle = await folder.getFileHandle(`${catalogue}.jpg`);
 			const file = await fileHandle.getFile();
 			const url = URL.createObjectURL(file);
-			objectUrls.push(url);
+			if (!isCurrentImageLoad(generation)) {
+				URL.revokeObjectURL(url);
+				return;
+			}
+			objectUrl = url;
 			imgSrc = url;
 		} catch {
+			if (!isCurrentImageLoad(generation)) return;
 			imgSrc = null;
+		} finally {
+			if (isCurrentImageLoad(generation)) {
+				loading = false;
+			}
 		}
-		loading = false;
 	}
 
 	function resetZoom() {

@@ -18,6 +18,8 @@
 	// don't briefly load the shipped CSV before a custom override CSV has had
 	// a chance to be discovered in the restored folder.
 	let folderRestored = $state(false);
+	let restoreGeneration = 0;
+	let csvLoadGeneration = 0;
 
 	onMount(async () => {
 		await restoreTheme();
@@ -29,6 +31,7 @@
 			order: '',
 			family: '',
 			genus: '',
+			clade: '',
 			vernacular: '',
 			habits: [...DEFAULT_HABITS],
 			leafArrangement: '',
@@ -42,13 +45,21 @@
 		};
 	}
 
-	async function loadFromSource(ds, folder) {
+	function isCurrentCsvLoad(generation) {
+		return generation === csvLoadGeneration;
+	}
+
+	async function loadFromSource(ds, folder, generation) {
+		let customLoadError = null;
+
 		if (folder) {
 			try {
 				const custom = await readCustomCsvFromFolder(folder, ds);
+				if (!isCurrentCsvLoad(generation)) return;
 				if (custom) {
 					try {
 						const data = parseSpeciesCsv(custom.text);
+						if (!isCurrentCsvLoad(generation)) return;
 						taxaStore.set(data);
 						taxaSourceStore.set('custom');
 						taxaSourceFilenameStore.set(custom.filename);
@@ -59,13 +70,16 @@
 						const reason = err instanceof CsvSchemaError
 							? err.message
 							: 'Parse error — check the file is a valid CSV';
-						csvLoadErrorStore.set({ filename: custom.filename, reason });
+						customLoadError = { filename: custom.filename, reason };
+						if (isCurrentCsvLoad(generation)) {
+							csvLoadErrorStore.set(customLoadError);
+						}
 						console.error(`[${ds.id} | custom ${custom.filename}] Parse failed:`, err);
-						// Leave taxaStore intact so the grid doesn't empty.
-						return;
+						// Fall through to bundled CSV so initial loads do not get stuck.
 					}
 				}
 			} catch (err) {
+				if (!isCurrentCsvLoad(generation)) return;
 				console.warn(`[${ds.id}] Could not scan folder for override CSV:`, err);
 				// Fall through to bundled CSV.
 			}
@@ -73,12 +87,18 @@
 
 		try {
 			const data = await loadSpeciesData(ds.csvPath);
+			if (!isCurrentCsvLoad(generation)) return;
 			taxaStore.set(data);
 			taxaSourceStore.set('shipped');
 			taxaSourceFilenameStore.set(null);
-			csvLoadErrorStore.set(null);
+			csvLoadErrorStore.set(customLoadError);
 			console.log(`[${ds.id} | shipped] CSV loaded:`, Object.keys(data.speciesByName).length, 'species,', data.allFamilies.length, 'families');
 		} catch (err) {
+			if (!isCurrentCsvLoad(generation)) return;
+			const reason = err instanceof CsvSchemaError
+				? err.message
+				: 'Could not load shipped CSV';
+			csvLoadErrorStore.set(customLoadError ?? { filename: ds.csvPath.split('/').pop(), reason });
 			console.error(`[${ds.id} | shipped] Failed to load species data:`, err);
 		}
 	}
@@ -91,6 +111,8 @@
 
 		// Dataset switch: reset view state and kick off folder restore.
 		if (ds.id !== loadedDatasetId) {
+			const generation = ++restoreGeneration;
+			csvLoadGeneration++;
 			loadedDatasetId = ds.id;
 			folderRestored = false;
 			taxaStore.set(null);
@@ -101,7 +123,10 @@
 			folderHandleStore.set(null);
 			pendingFolderHandleStore.set(null);
 			(async () => {
-				await restoreFolderHandle(ds.id);
+				const restored = await restoreFolderHandle(ds.id, { commit: false });
+				if (generation !== restoreGeneration) return;
+				folderHandleStore.set(restored.folderHandle);
+				pendingFolderHandleStore.set(restored.pendingFolderHandle);
 				folderRestored = true;
 			})();
 			return;
@@ -111,7 +136,8 @@
 		// custom override CSV doesn't get briefly overridden by the shipped fetch.
 		if (!ready) return;
 
-		loadFromSource(ds, folder);
+		const generation = ++csvLoadGeneration;
+		loadFromSource(ds, folder, generation);
 	});
 </script>
 

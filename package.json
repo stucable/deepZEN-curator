@@ -7,7 +7,9 @@
     "dev": "vite dev",
     "build": "vite build",
     "preview": "vite preview",
-    "prep-thumbs": "node scripts/generate-thumbnails.js"
+    "prep-thumbs": "node scripts/generate-thumbnails.js",
+    "check:data": "node scripts/validate-data.js",
+    "check": "npm run check:data && npm run build"
   },
   "devDependencies": {
     "@sveltejs/adapter-static": "^3.0.0",

@@ -53,25 +53,42 @@ export async function verifyPermission(handle) {
  * Otherwise → sets pendingFolderHandleStore so the UI can offer reconnect.
  * Also runs the legacy migration once per session.
  */
-export async function restoreFolderHandle(datasetId) {
+export async function restoreFolderHandle(datasetId, { commit = true } = {}) {
 	await migrateLegacyHandle();
 	try {
 		const handle = await idbGet(keyFor(datasetId));
 		if (!handle) {
-			folderHandleStore.set(null);
-			pendingFolderHandleStore.set(null);
-			return;
+			const state = { folderHandle: null, pendingFolderHandle: null };
+			if (commit) {
+				folderHandleStore.set(state.folderHandle);
+				pendingFolderHandleStore.set(state.pendingFolderHandle);
+			}
+			return state;
 		}
 		const state = await handle.queryPermission({ mode: 'read' });
 		if (state === 'granted') {
-			folderHandleStore.set(handle);
-			pendingFolderHandleStore.set(null);
+			const result = { folderHandle: handle, pendingFolderHandle: null };
+			if (commit) {
+				folderHandleStore.set(result.folderHandle);
+				pendingFolderHandleStore.set(result.pendingFolderHandle);
+			}
+			return result;
 		} else {
-			folderHandleStore.set(null);
-			pendingFolderHandleStore.set(handle);
+			const result = { folderHandle: null, pendingFolderHandle: handle };
+			if (commit) {
+				folderHandleStore.set(result.folderHandle);
+				pendingFolderHandleStore.set(result.pendingFolderHandle);
+			}
+			return result;
 		}
 	} catch {
 		// IndexedDB or permission check failed — silently ignore
+		const state = { folderHandle: null, pendingFolderHandle: null };
+		if (commit) {
+			folderHandleStore.set(state.folderHandle);
+			pendingFolderHandleStore.set(state.pendingFolderHandle);
+		}
+		return state;
 	}
 }
 

@@ -7,9 +7,12 @@
 
 	let imgSrc = $state(null);
 	let error = $state(false);
+	let loading = $state(false);
 	let visible = $state(false);
 	let containerEl;
 	let observer;
+	let objectUrl = null;
+	let loadGeneration = 0;
 
 	onMount(() => {
 		observer = new IntersectionObserver(
@@ -25,25 +28,57 @@
 	});
 
 	onDestroy(() => {
+		loadGeneration++;
 		observer?.disconnect();
-		if (imgSrc) URL.revokeObjectURL(imgSrc);
+		clearImageUrl();
 	});
 
 	$effect(() => {
-		if (visible && folderHandle && !imgSrc && !error) {
-			loadImage();
+		const datasetId = $currentDatasetStore?.id;
+		const folder = folderHandle;
+		const cat = catalogueNumber;
+		const generation = ++loadGeneration;
+
+		clearImageUrl();
+		error = false;
+		loading = false;
+
+		if (visible && folder && datasetId && cat) {
+			loadImage({ folder, datasetId, cat, generation });
 		}
 	});
 
-	async function loadImage() {
-		const datasetId = $currentDatasetStore?.id;
-		if (!datasetId) return;
+	function clearImageUrl() {
+		if (objectUrl) {
+			URL.revokeObjectURL(objectUrl);
+			objectUrl = null;
+		}
+		imgSrc = null;
+	}
+
+	function isCurrentLoad(generation) {
+		return generation === loadGeneration;
+	}
+
+	async function loadImage({ folder, datasetId, cat, generation }) {
+		loading = true;
 		try {
-			const blob = await loadThumbnail(folderHandle, datasetId, catalogueNumber);
-			imgSrc = URL.createObjectURL(blob);
+			const blob = await loadThumbnail(folder, datasetId, cat);
+			const url = URL.createObjectURL(blob);
+			if (!isCurrentLoad(generation)) {
+				URL.revokeObjectURL(url);
+				return;
+			}
+			objectUrl = url;
+			imgSrc = url;
 		} catch {
+			if (!isCurrentLoad(generation)) return;
 			error = true;
-			console.warn(`Image not found: ${catalogueNumber}.jpg`);
+			console.warn(`Image not found: ${cat}.jpg`);
+		} finally {
+			if (isCurrentLoad(generation)) {
+				loading = false;
+			}
 		}
 	}
 </script>
@@ -79,10 +114,12 @@
 			</svg>
 			<span class="mt-1 text-xs">No folder</span>
 		</div>
-	{:else}
+	{:else if loading}
 		<!-- Loading placeholder -->
 		<div class="flex h-full w-full items-center justify-center">
 			<div class="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-emerald-500 dark:border-gray-600 dark:border-t-emerald-400"></div>
 		</div>
+	{:else}
+		<div class="h-full w-full bg-gray-100 dark:bg-gray-800"></div>
 	{/if}
 </button>
