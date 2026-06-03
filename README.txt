@@ -1,4 +1,4 @@
-deepZEN-curator  —  v0.6  (Ankarafantsika + Ranomafana, 2026-05-19)
+deepZEN-curator  —  v0.7  (Ankarafantsika + Ranomafana, 2026-06-03)
 ===================================================================
 
 Offline herbarium image browser for field botanists in Madagascar.
@@ -239,7 +239,7 @@ REPORTING ISSUES / GETTING UPDATES
 ----------------------------------
 - If something looks wrong (missing species, broken image, weird
   filter behaviour), email Stuart with a screenshot and the
-  version number at the top of this file (v0.6).
+  version number at the top of this file (v0.7).
 - New versions will arrive by email as a small zip. Unzip over
   the old folder (or delete the old folder first to avoid stale
   cached files), then double-click start.bat as before.
