@@ -1,43 +1,26 @@
 @echo off
 cd /d "%~dp0"
 
-if exist "%~dp0miniserve.exe" goto :have_miniserve
-if exist "%~dp0miniserve-*.exe" goto :unrenamed
-goto :missing
-
-:unrenamed
-echo.
-echo It looks like miniserve was downloaded but not renamed.
-echo Found in this folder:
-for %%f in ("%~dp0miniserve-*.exe") do echo   %%~nxf
-echo.
-echo Please rename that file to exactly:
-echo   miniserve.exe
-echo (no version number, no architecture suffix). Then double-click
-echo start.bat again.
-echo.
-echo Tip: if Windows hides extensions, turn on "File name extensions"
-echo in File Explorer's View menu before renaming, otherwise you may
-echo end up with "miniserve.exe.exe" by mistake.
-echo.
-pause
-exit /b 1
-
-:missing
-echo.
-echo miniserve.exe is missing from this folder.
-echo.
-echo It should sit next to start.bat. If this is your first install,
-echo download it from:
-echo   https://github.com/svenstaro/miniserve/releases/latest
-echo (pick the file ending in "x86_64-pc-windows-msvc.exe",
-echo rename to "miniserve.exe", and drop it next to start.bat).
-echo See README.txt step 2 for details.
-echo.
-pause
-exit /b 1
-
-:have_miniserve
+REM --- Check Python is installed and actually runs ---
+REM Use "python --version" rather than "where python": on Windows, "where"
+REM also matches the Microsoft Store App Execution Alias stub, which is not a
+REM real Python. "--version" fails on the stub, so this catches that case too.
+python --version >nul 2>nul
+if errorlevel 1 (
+    echo.
+    echo Python was not found on this computer.
+    echo.
+    echo deepZEN-curator needs Python to run its small local web server.
+    echo Install "Python 3.12" from the Microsoft Store ^(no admin rights
+    echo needed^), or ask IT for Python via Company Portal. Once installed,
+    echo close this window and double-click start.bat again.
+    echo.
+    echo Note: if a Microsoft Store page opens when you type "python", that
+    echo means Python is not really installed yet - install it first.
+    echo.
+    pause
+    exit /b 1
+)
 
 if not exist "%~dp0build\index.html" (
     echo.
@@ -55,18 +38,15 @@ echo.
 
 start "" /min cmd /c "timeout /t 2 >nul & start """" http://localhost:5173"
 
-miniserve.exe --port 5173 --index index.html --spa build
+python -m http.server 5173 --directory build
 
 echo.
 echo ----------------------------------------------------------------
-echo miniserve has exited.
+echo The local server has stopped.
 echo.
 echo If the app never loaded, common causes are:
-echo   - Windows blocked miniserve.exe. Right-click miniserve.exe ^>
-echo     Properties ^> tick "Unblock" ^> OK, then try again.
+echo   - Python is not installed (see the message above on the next run).
 echo   - Port 5173 is already in use by another program.
-echo   - You downloaded the wrong architecture (must end in
-echo     "x86_64-pc-windows-msvc.exe").
 echo ----------------------------------------------------------------
 echo.
 pause

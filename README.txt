@@ -16,49 +16,20 @@ QUICK START (Windows 11)
    If Windows hides extensions, turn on "File name extensions"
    in File Explorer's View menu first.
 
-2. ONE-TIME ONLY — download miniserve.exe. This is a tiny ~2 MB
-   local web server (no install, no admin rights) that the app
-   needs to run. Corporate email scanners block .exe files, so
-   you grab it yourself directly from its official home:
-
-     a. Open this link in Chrome:
-          https://github.com/svenstaro/miniserve/releases/latest
-     b. Under "Assets", download the file ending in
-          x86_64-pc-windows-msvc.exe
-        (e.g. miniserve-0.35.0-x86_64-pc-windows-msvc.exe)
-     c. RENAME it. The file arrives with a long version-stamped
-        name like:
-          miniserve-0.35.0-x86_64-pc-windows-msvc.exe
-        You must shorten it to exactly:
-          miniserve.exe
-        — no version number, no architecture suffix, just the
-        nine characters "miniserve.exe". This rename is the most
-        common thing testers forget; if you skip it, start.bat
-        will refuse to launch.
-        If Windows hides extensions, turn on "File name extensions"
-        in File Explorer's View menu before renaming, otherwise you
-        may accidentally create "miniserve.exe.exe".
-     d. Move the renamed file into this folder, sitting next to
-        start.bat (and next to the build\ subfolder).
-
-   You only do this once. Future updates only replace the build\
-   folder; miniserve.exe and start.bat stay in place.
-
-3. Double-click start.bat.
-   - If Windows SmartScreen blocks start.bat, click "More info"
-     then "Run anyway".
-   - The first time miniserve.exe runs, Windows may also show
-     "Windows protected your PC" — same fix: "More info" →
-     "Run anyway". After that it launches silently.
-4. Google Chrome opens at http://localhost:5173.
-5. At the top of the sidebar, pick the dataset you want to browse
+2. Double-click start.bat.
+   - If Windows SmartScreen blocks it, click "More info" then
+     "Run anyway".
+   - If you see "Python was not found", install Python first — see
+     IF PYTHON IS NOT INSTALLED below — then double-click again.
+3. Google Chrome opens at http://localhost:5173.
+4. At the top of the sidebar, pick the dataset you want to browse
    (Ankarafantsika is selected by default).
-6. Click "Select image folder" and browse to the folder of .jpg
+5. Click "Select image folder" and browse to the folder of .jpg
    images for that dataset.
-7. To use the other dataset, click it in the selector and pick its
+6. To use the other dataset, click it in the selector and pick its
    image folder the same way. Each dataset remembers its own folder,
    so you only have to pick each one once.
-8. Species cards will populate with thumbnails. Click any thumbnail to
+7. Species cards will populate with thumbnails. Click any thumbnail to
    view the full image. Use the arrow keys in the lightbox to flip
    through images; press Escape to close.
    (The first scroll-through is slow — see FIRST USE IS SLOW below.)
@@ -93,6 +64,20 @@ A few practical notes:
 - If a future update ships a new image (e.g. an updated specimen
   scan), only that one image will regenerate its thumbnail on next
   view; everything else stays fast.
+
+
+IF PYTHON IS NOT INSTALLED
+--------------------------
+start.bat will tell you if Python is missing. To install it:
+
+- Open the Microsoft Store, search for "Python 3.12", click Install.
+  This does not require admin rights.
+- If the Store is blocked, try Company Portal, or download from
+  https://python.org (an admin may need to run the installer).
+- If typing "python" just opens a Microsoft Store page, Python is
+  not actually installed yet — install it from there first.
+
+After installing, close the window and double-click start.bat again.
 
 
 FILTERS
@@ -209,14 +194,14 @@ HOW IT WORKS (for the technically curious)
   compiled to an .exe, and NOT WebAssembly. It is an ordinary
   web page, served from your own computer instead of the internet.
 
-- start.bat launches a tiny local web server (miniserve.exe, a
-  ~3 MB standalone tool that ships next to start.bat — no install,
-  no admin rights). It serves build\ on http://localhost:5173,
-  then opens Chrome at that address. "localhost" means "this
-  machine" — nothing is sent or received over the internet. You
-  can unplug the network cable and it still works. Your CSV and
-  image folder never leave your laptop; the browser reads them
-  directly from disk through the folder picker.
+- start.bat launches a tiny local web server (Python's built-in
+  http.server module — no extra download, no install beyond Python
+  itself). It serves build\ on http://localhost:5173, then opens
+  Chrome at that address. "localhost" means "this machine" —
+  nothing is sent or received over the internet. You can unplug
+  the network cable and it still works. Your CSV and image folder
+  never leave your laptop; the browser reads them directly from
+  disk through the folder picker.
 
 - Why a browser rather than a normal installed program (.exe)?
   * Chrome already provides everything the app needs: a fast
@@ -244,11 +229,10 @@ HOW IT WORKS (for the technically curious)
   The folder you pick is the only folder the app can see —
   Chrome will not let it read anywhere else on disk. The page
   only talks to localhost (itself); no internet traffic, no
-  telemetry. The one unsandboxed piece is the small miniserve
-  binary that start.bat launches: it is a widely-used open-source
-  static-file server (https://github.com/svenstaro/miniserve),
-  serves the build\ folder read-only, and is bound to localhost
-  so other machines on the network cannot reach it.
+  telemetry. The one unsandboxed piece is the small Python web
+  server that start.bat launches: it is stock standard-library
+  code, serves the build\ folder read-only, and is bound to
+  localhost so other machines on the network cannot reach it.
 
 
 REPORTING ISSUES / GETTING UPDATES
@@ -256,12 +240,9 @@ REPORTING ISSUES / GETTING UPDATES
 - If something looks wrong (missing species, broken image, weird
   filter behaviour), email Stuart with a screenshot and the
   version number at the top of this file (v0.6).
-- New versions will arrive by email as a small zip containing a
-  new build\ folder. Drop it over your existing build\ folder
-  (or delete the old build\ first to avoid stale cached files),
-  then double-click start.bat as before. You do NOT need to
-  re-download miniserve.exe or start.bat — those stay in place
-  across updates. Only build\ changes between versions.
+- New versions will arrive by email as a small zip. Unzip over
+  the old folder (or delete the old folder first to avoid stale
+  cached files), then double-click start.bat as before.
 - If only the CSV has changed, you can edit your personal copy
   (see "Edit the species data yourself" above) — no re-install
   required.
