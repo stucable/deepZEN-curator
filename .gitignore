@@ -49,3 +49,14 @@ docs/curation-roadmap.md
 # Local scratch / one-off notes (not for the repo)
 data-files/
 RENAME_FOLDER.md
+
+# Local server binary (testers download their own — see CLAUDE.md)
+miniserve.exe
+
+# Internal notes / WIP (not for the repo)
+AGENTS.md
+CODEX-branstorming.md
+SPEC_prolog_embeddings.md
+design-review-2026-05-14.md
+grant-applications/
+kb-draft/
