@@ -1,9 +1,9 @@
-deepZEN-curator  —  v0.7  (Ankarafantsika + Ranomafana, 2026-06-03)
-===================================================================
+deepZEN-curator  —  v0.8  (Ankarafantsika + Ranomafana + Macaranga, 2026-06-05)
+===============================================================================
 
 Offline herbarium image browser for field botanists in Madagascar.
-Ships with two datasets — Ankarafantsika and Ranomafana — switchable
-from the sidebar at runtime.
+Ships with three datasets — Ankarafantsika, Ranomafana and Macaranga
+— switchable from the sidebar at runtime.
 Runs entirely on your laptop — no internet needed once you have the files.
 
 
