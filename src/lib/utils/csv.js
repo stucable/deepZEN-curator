@@ -495,6 +495,61 @@ export function parseIdentificationLog(text) {
 	return entries;
 }
 
+/** Fixed column order for the identifications log — the inverse of parseIdentificationLog. */
+const IDENTIFICATION_LOG_FIELDS = [
+	'CatalogueNumber', 'ScientificName', 'Identifier', 'IdentificationDate', 'Remarks'
+];
+
+const identificationEntryToValues = (e) => [
+	e.catalogueNumber, e.scientificName, e.identifier ?? '', e.identificationDate ?? '', e.remarks ?? ''
+];
+
+/**
+ * Serialises identification-log entries to CSV text (header + rows). Used to
+ * create a fresh log file. parseIdentificationLog(serializeIdentificationLog(x))
+ * reproduces x. Persistence appends to an existing log with
+ * serializeIdentificationRow instead, to preserve the file's prior bytes.
+ * @param {Array<object>} entries
+ * @returns {string} CSV text
+ */
+export function serializeIdentificationLog(entries) {
+	return Papa.unparse({ fields: IDENTIFICATION_LOG_FIELDS, data: entries.map(identificationEntryToValues) });
+}
+
+/**
+ * Serialises a single log entry as one CSV line (no header, no trailing
+ * newline) for append-only writes onto an existing log. Column order matches
+ * serializeIdentificationLog so an appended row aligns with the header.
+ * @param {object} entry
+ * @returns {string} one CSV row
+ */
+export function serializeIdentificationRow(entry) {
+	return Papa.unparse([identificationEntryToValues(entry)]);
+}
+
+/**
+ * Returns the new full text of an identifications log after appending `entry` to
+ * `existingText`. Append-only and byte-preserving: an existing log keeps its
+ * prior content verbatim (a normalising newline is added only if missing) and
+ * gains one headerless row; an empty/absent log is created with a header. Pure —
+ * folder.js wraps this with the file read/write.
+ * @param {string} existingText - current log text ('' if the file doesn't exist)
+ * @param {object} entry
+ * @returns {string} the full text to write back
+ */
+export function appendIdentificationToLog(existingText, entry) {
+	if (!existingText || existingText.trim() === '') {
+		return serializeIdentificationLog([entry]) + '\r\n';
+	}
+	// Match the existing file's newline. PapaParse emits (and, on parse, expects)
+	// CRLF by default, and treats a lone LF as in-field data when the document is
+	// CRLF — so a mismatched separator would merge the appended row into the last
+	// field. Reuse the file's own convention; default to CRLF (what we write).
+	const nl = existingText.includes('\r\n') ? '\r\n' : '\n';
+	const body = existingText.endsWith(nl) ? existingText : existingText + nl;
+	return body + serializeIdentificationRow(entry) + nl;
+}
+
 /**
  * Overlays identification-log entries onto specimens, setting each specimen's
  * currentDetermination to the LATEST entry for its barcode. "Latest" = highest
