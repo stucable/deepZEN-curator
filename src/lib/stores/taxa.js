@@ -4,6 +4,14 @@ import { writable, derived } from 'svelte/store';
 export const taxaStore = writable(null);
 
 /**
+ * Parsed identifications-log entries for the active dataset (the append-only
+ * re-ID history overlaid on the base CSV at load). Empty array when no log file
+ * is present. The curation edit modal reads this to show a specimen's ID history
+ * and pushes onto it after a re-identification is appended.
+ */
+export const identificationLogStore = writable([]);
+
+/**
  * Set when a custom override CSV inside the user's folder failed to parse.
  * `{ filename, reason }` or null. Drives the sidebar's amber banner.
  * Cleared on any successful load.

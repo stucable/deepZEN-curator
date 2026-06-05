@@ -21,7 +21,10 @@ import {
 import {
 	parseIdentificationLog,
 	serializeIdentificationLog,
-	appendIdentificationToLog
+	appendIdentificationToLog,
+	parseSpeciesCsv,
+	serializeSpecimensCsv,
+	applyIdentificationLog
 } from '../src/lib/utils/csv.js';
 
 let failures = 0;
@@ -89,6 +92,46 @@ const noNewline = serializeIdentificationLog([entries[0]]); // Papa.unparse adds
 assert(!noNewline.endsWith('\n'), 'precondition: serialised log has no trailing newline');
 eq(parseIdentificationLog(appendIdentificationToLog(noNewline, entries[1])), [entries[0], entries[1]],
 	'append inserts a separating newline so rows never merge');
+
+console.log('\n5. Load-time overlay + correction round-trip (step 3b save semantics)');
+const baseCsv = [
+	'TaxonomicName,CatalogueNumber,Family,Genus,DecimalLatitude,DecimalLongitude,Country,RecordedBy',
+	'Macaranga alpina,K1,Euphorbiaceae,Macaranga,-18.5,47.2,Madagascar,Cable',
+	'Macaranga sp.,K2,Euphorbiaceae,Macaranga,,,Madagascar,Razafi'
+].join('\r\n');
+
+// (a) Overlaying an ID log re-determines a specimen and regroups the species view.
+const logText = serializeIdentificationLog([
+	{ catalogueNumber: 'K2', scientificName: 'Macaranga cuspidata', identifier: 'S. Cable', identificationDate: '2025-02-01', remarks: '' }
+]);
+const { data: overlaid, entries: overlaidEntries } = applyIdentificationLog(parseSpeciesCsv(baseCsv), logText);
+eq(overlaidEntries.length, 1, 'overlay returns the parsed log entries (for the history panel)');
+eq(overlaid.specimensByCatalogue.get('K2').currentDetermination, 'Macaranga cuspidata',
+	'currentDetermination follows the latest log entry');
+assert('Macaranga cuspidata' in overlaid.speciesByName && !('Macaranga sp.' in overlaid.speciesByName),
+	'species view regroups under the new determination (old key gone)');
+assert(applyIdentificationLog(parseSpeciesCsv(baseCsv), '').entries.length === 0,
+	'no log text → unchanged dataset, empty entries');
+
+// (b) A re-ID never rewrites TaxonomicName in the override — the log owns it.
+const k2 = overlaid.specimensByCatalogue.get('K2');
+eq(k2.taxonomicName, 'Macaranga sp.', 'original TaxonomicName retained on the specimen after re-ID');
+const reparsedAfterReID = parseSpeciesCsv(serializeSpecimensCsv(overlaid.specimensByCatalogue));
+eq(reparsedAfterReID.specimensByCatalogue.get('K2').taxonomicName, 'Macaranga sp.',
+	'override CSV keeps the original TaxonomicName (currentDetermination lives in the log)');
+
+// (c) A coordinate/collector correction survives serialize → parse.
+const corrected = parseSpeciesCsv(baseCsv).specimensByCatalogue;
+const k1 = corrected.get('K1');
+k1.lat = -19.25;
+k1.lng = 47.9;
+k1.recordedBy = 'Cable & Razafi';
+k1.editedAt = '2025-03-04T10:00:00.000Z';
+const reparsed = parseSpeciesCsv(serializeSpecimensCsv(corrected)).specimensByCatalogue.get('K1');
+eq([reparsed.lat, reparsed.lng], [-19.25, 47.9], 'corrected coordinates persist through the override');
+eq(reparsed.recordedBy, 'Cable & Razafi', 'corrected collector persists');
+eq(reparsed.editedAt, '2025-03-04T10:00:00.000Z', 'EditedAt stamp persists');
+eq(reparsed.taxonomicName, 'Macaranga alpina', 'untouched determination unchanged by a correction');
 
 console.log(`\n${failures === 0 ? '✅ all checks passed' : `❌ ${failures} check(s) failed`}`);
 process.exit(failures === 0 ? 0 : 1);

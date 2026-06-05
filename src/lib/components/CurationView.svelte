@@ -1,11 +1,17 @@
 <script>
 	import { taxaStore } from '$lib/stores/taxa.js';
+	import SpecimenEditModal from './SpecimenEditModal.svelte';
 
 	// Specimen-level controls, local to the curation view (the sidebar's
 	// species-level filters don't apply here). Country is a specimen attribute
 	// with multiple values across a dataset, so it filters per specimen.
 	let search = $state('');
 	let country = $state('');
+
+	// The specimen currently open in the edit modal, or null. Clicking a row sets
+	// it; the modal mutates the shared specimen map + resets taxaStore on save, so
+	// the derived rows below recompute automatically.
+	let editing = $state(null);
 
 	// Barcoded specimens only — the synthetic barcode-less placeholders that keep
 	// the species view's dropdowns complete aren't curatable rows.
@@ -98,7 +104,14 @@
 				</thead>
 				<tbody>
 					{#each rows as s (s.catalogueNumber)}
-						<tr class="border-t border-gray-100 odd:bg-white even:bg-gray-50 hover:bg-emerald-50 dark:border-gray-800 dark:odd:bg-gray-900 dark:even:bg-gray-950 dark:hover:bg-emerald-950/40">
+						<tr
+							onclick={() => (editing = s)}
+							onkeydown={(e) => { if (e.key === 'Enter') editing = s; }}
+							tabindex="0"
+							role="button"
+							aria-label="Edit {s.catalogueNumber}"
+							class="cursor-pointer border-t border-gray-100 odd:bg-white even:bg-gray-50 hover:bg-emerald-50 focus:bg-emerald-50 focus:outline-none dark:border-gray-800 dark:odd:bg-gray-900 dark:even:bg-gray-950 dark:hover:bg-emerald-950/40 dark:focus:bg-emerald-950/40"
+						>
 							<td class="px-3 py-2 font-mono text-xs whitespace-nowrap text-gray-700 dark:text-gray-300">{s.catalogueNumber}</td>
 							<td class="font-species px-3 py-2 whitespace-nowrap text-gray-900 dark:text-gray-100">{s.currentDetermination}</td>
 							<td class="px-3 py-2 whitespace-nowrap text-gray-600 dark:text-gray-400">{dash(s.family)}</td>
@@ -114,4 +127,8 @@
 			</table>
 		</div>
 	{/if}
+{/if}
+
+{#if editing}
+	<SpecimenEditModal specimen={editing} onClose={() => (editing = null)} />
 {/if}

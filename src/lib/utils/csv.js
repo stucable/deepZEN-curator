@@ -81,8 +81,8 @@ function parseCoord(raw, min, max) {
 	return n;
 }
 
-const parseLat = (raw) => parseCoord(raw, -90, 90);
-const parseLng = (raw) => parseCoord(raw, -180, 180);
+export const parseLat = (raw) => parseCoord(raw, -90, 90);
+export const parseLng = (raw) => parseCoord(raw, -180, 180);
 
 /**
  * Splits an ImageFile cell into de-duplicated file basenames. A specimen carries
@@ -242,6 +242,24 @@ export function buildSpeciesView(specimensByCatalogue) {
 }
 
 /**
+ * Wraps a specimensByCatalogue Map into the full dataset object the UI consumes:
+ * the species view (buildSpeciesView) plus the Map itself and the derived
+ * geolocated-specimen list. Used both by the initial parse and after a curation
+ * mutation (re-identification or coordinate correction) so the view, dropdowns,
+ * and map points re-derive consistently from one place.
+ * @param {Map<string, object>} specimensByCatalogue
+ */
+export function rebuildView(specimensByCatalogue) {
+	const view = buildSpeciesView(specimensByCatalogue);
+	// Only real (barcoded) specimens can anchor a map point to an image, so the
+	// barcode-less placeholders are excluded even if they carry coordinates.
+	const geolocatedSpecimens = [...specimensByCatalogue.values()].filter(
+		(s) => s.catalogueNumber && s.lat != null && s.lng != null
+	);
+	return { ...view, specimensByCatalogue, geolocatedSpecimens };
+}
+
+/**
  * Parses a CSV text blob into the species structure. Pure — no fetching.
  * Throws CsvSchemaError if zero rows contain a usable TaxonomicName.
  * @param {string} text - raw CSV text
@@ -370,19 +388,13 @@ export function parseSpeciesCsv(text) {
 		});
 	}
 
-	const view = buildSpeciesView(specimensByCatalogue);
+	const result = rebuildView(specimensByCatalogue);
 
-	if (Object.keys(view.speciesByName).length === 0) {
+	if (Object.keys(result.speciesByName).length === 0) {
 		throw new CsvSchemaError('No rows with a TaxonomicName column were found');
 	}
 
-	// Only real (barcoded) specimens can anchor a map point to an image, so the
-	// barcode-less placeholders are excluded even if they carry coordinates.
-	const geolocatedSpecimens = [...specimensByCatalogue.values()].filter(
-		(s) => s.catalogueNumber && s.lat != null && s.lng != null
-	);
-
-	return { ...view, specimensByCatalogue, geolocatedSpecimens };
+	return result;
 }
 
 /**
@@ -578,4 +590,22 @@ export function applyIdentifications(specimensByCatalogue, logEntries) {
 		specimen.currentDetermination = winner ? winner.scientificName : specimen.taxonomicName;
 	}
 	return specimensByCatalogue;
+}
+
+/**
+ * Overlays an identifications-log CSV onto an already-parsed dataset. Parses the
+ * log, applies it to the dataset's specimens (currentDetermination ← latest entry
+ * per barcode), and re-runs rebuildView so the species view regroups by the new
+ * determinations. Returns the (possibly unchanged) dataset object plus the parsed
+ * entries — the curation modal's ID-history panel consumes the entries. Pure;
+ * discovering the log file in the image folder is folder.js's job (readIdentificationLog).
+ * @param {object} parsed - result of parseSpeciesCsv (has specimensByCatalogue)
+ * @param {string} logText - identifications-log CSV text ('' when no log present)
+ * @returns {{ data: object, entries: Array<object> }}
+ */
+export function applyIdentificationLog(parsed, logText) {
+	const entries = logText ? parseIdentificationLog(logText) : [];
+	if (entries.length === 0) return { data: parsed, entries };
+	applyIdentifications(parsed.specimensByCatalogue, entries);
+	return { data: rebuildView(parsed.specimensByCatalogue), entries };
 }
