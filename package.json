@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "prep-thumbs": "node scripts/generate-thumbnails.js",
     "check:data": "node scripts/validate-data.js",
+    "check:phaseb": "node scripts/verify-phaseb-datalayer.js",
     "check": "npm run check:data && npm run build"
   },
   "devDependencies": {

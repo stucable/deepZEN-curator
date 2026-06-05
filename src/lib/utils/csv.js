@@ -322,7 +322,7 @@ export function parseSpeciesCsv(text) {
 		// Barcode-less rows get a synthetic, collision-proof key (the leading
 		// space can't appear in a trimmed catalogue number) so they survive in
 		// the Map without masquerading as a real specimen.
-		const key = catalogueNumber || ` nobarcode:${syntheticSeq++}`;
+		const key = catalogueNumber || ` nobarcode:${syntheticSeq++}`;
 		seededNames.add(name);
 		specimensByCatalogue.set(key, {
 			catalogueNumber,
@@ -357,8 +357,16 @@ export function parseSpeciesCsv(text) {
 			recordedBy: row.RecordedBy?.trim() || '',
 			recordNumber: row.RecordNumber?.trim() || '',
 			collectionDate: row.CollectionDate?.trim() || '',
-			occurrenceId: row.OccurrenceID?.trim() || '',
-			editedAt: row.EditedAt?.trim() || ''
+			country: row.Country?.trim() || '',
+			editedAt: row.EditedAt?.trim() || '',
+			// Lossless passthrough: never read by the species view / filters / map,
+			// but retained on the specimen so the curation override CSV can be
+			// written back without shedding columns (Phase B). Deliberately kept off
+			// the species object and out of searchText to preserve byte-for-byte
+			// parity of the species view with the pre-Phase-B parser.
+			fullName: row.FullName?.trim() || '',
+			typeStatus: row.TypeStatus?.trim() || '',
+			typeName: row.TypeName?.trim() || ''
 		});
 	}
 
@@ -388,4 +396,131 @@ export async function loadSpeciesData(csvPath) {
 	}
 	const text = await res.text();
 	return parseSpeciesCsv(text);
+}
+
+/**
+ * Fixed column order for the curation override CSV. Covers the full lossless
+ * schema so a serialised specimen round-trips through parseSpeciesCsv with no
+ * field loss. Kept explicit (not derived from the data) so output is
+ * deterministic and diff-friendly regardless of which fields a dataset uses.
+ */
+const OVERRIDE_COLUMNS = [
+	'TaxonomicName', 'CatalogueNumber', 'Clade', 'Order', 'Family', 'Genus',
+	'FullName', 'VernacularName', 'TypeStatus', 'TypeName',
+	'DecimalLatitude', 'DecimalLongitude', 'Locality', 'RecordedBy',
+	'RecordNumber', 'CollectionDate', 'Country',
+	'ImageFile', 'Habit', 'LeafArrangement', 'LeafForm', 'LeafVenation',
+	'LeafMargin', 'Stipules', 'Exudate', 'StemArmature', 'Tendrils', 'EditedAt'
+];
+
+/**
+ * Serialises a specimensByCatalogue Map back into override-CSV text. Inverse of
+ * the row-parsing in parseSpeciesCsv at the specimen level: parse → serialize →
+ * parse reproduces an identical specimen Map. It does NOT reproduce the original
+ * CSV text byte-for-byte — the parser legitimately collapses multi-row-same-
+ * barcode specimens and drops barcode-less placeholders, both of which this
+ * serialiser emits in their already-merged, one-row-per-specimen form.
+ *
+ * Only barcoded (curatable) specimens are written; synthetic ` nobarcode:*`
+ * placeholders carry no specimen identity and are skipped.
+ * @param {Map<string, object>} specimensByCatalogue
+ * @returns {string} CSV text
+ */
+export function serializeSpecimensCsv(specimensByCatalogue) {
+	const rows = [];
+	for (const s of specimensByCatalogue.values()) {
+		if (!s.catalogueNumber) continue;
+		rows.push({
+			TaxonomicName: s.taxonomicName,
+			CatalogueNumber: s.catalogueNumber,
+			Clade: s.clade,
+			Order: s.order,
+			Family: s.family,
+			Genus: s.genus,
+			FullName: s.fullName,
+			VernacularName: s.vernacularName,
+			TypeStatus: s.typeStatus,
+			TypeName: s.typeName,
+			DecimalLatitude: s.lat == null ? '' : s.lat,
+			DecimalLongitude: s.lng == null ? '' : s.lng,
+			Locality: s.locality,
+			RecordedBy: s.recordedBy,
+			RecordNumber: s.recordNumber,
+			CollectionDate: s.collectionDate,
+			Country: s.country,
+			ImageFile: s.imageFiles.join('; '),
+			Habit: s.traits.habit.join(';'),
+			LeafArrangement: s.traits.leafArrangement,
+			LeafForm: s.traits.leafForm,
+			LeafVenation: s.traits.leafVenation,
+			LeafMargin: s.traits.leafMargin,
+			Stipules: s.traits.stipules,
+			Exudate: s.traits.exudate,
+			StemArmature: s.traits.stemArmature,
+			Tendrils: s.traits.tendrils,
+			EditedAt: s.editedAt
+		});
+	}
+	return Papa.unparse({ fields: OVERRIDE_COLUMNS, data: rows });
+}
+
+/**
+ * Parses an append-only identifications-log CSV into entries. Columns follow
+ * Darwin Core: CatalogueNumber, ScientificName, Identifier, IdentificationDate,
+ * Remarks. Rows missing a barcode or a name are skipped (they can't re-identify
+ * a specimen). Pure — discovery of the log file in the image folder is the
+ * persistence layer's job (a later Phase B increment).
+ * @param {string} text - raw CSV text
+ * @returns {Array<{catalogueNumber: string, scientificName: string, identifier: string, identificationDate: string, remarks: string}>}
+ */
+export function parseIdentificationLog(text) {
+	const { data } = Papa.parse(text, {
+		header: true,
+		skipEmptyLines: true,
+		transformHeader: (header) => header.trim().replace(/^\uFEFF/, '')
+	});
+	const entries = [];
+	for (const row of data) {
+		const catalogueNumber = row.CatalogueNumber?.trim() || '';
+		const scientificName = row.ScientificName?.trim() || '';
+		if (!catalogueNumber || !scientificName) continue;
+		entries.push({
+			catalogueNumber,
+			scientificName,
+			identifier: row.Identifier?.trim() || '',
+			identificationDate: row.IdentificationDate?.trim() || '',
+			remarks: row.Remarks?.trim() || ''
+		});
+	}
+	return entries;
+}
+
+/**
+ * Overlays identification-log entries onto specimens, setting each specimen's
+ * currentDetermination to the LATEST entry for its barcode. "Latest" = highest
+ * IdentificationDate (ISO strings compare lexically); ties — and the append-only
+ * common case of blank/equal dates — resolve to the entry appearing last in the
+ * log. Specimens with no matching entry keep currentDetermination === their
+ * original taxonomicName. Mutates the passed Map in place and returns it; the
+ * caller re-runs buildSpeciesView(map) to regroup the species view by the new
+ * determinations (buildSpeciesView already groups on currentDetermination).
+ * @param {Map<string, object>} specimensByCatalogue
+ * @param {Array<{catalogueNumber: string, scientificName: string, identificationDate: string}>} logEntries
+ * @returns {Map<string, object>} the same Map, mutated
+ */
+export function applyIdentifications(specimensByCatalogue, logEntries) {
+	// Winning entry per barcode: replace when the candidate's date is >= the
+	// current best, so among equal dates the last-iterated (latest appended) wins.
+	const latestByBarcode = new Map();
+	for (const entry of logEntries) {
+		const best = latestByBarcode.get(entry.catalogueNumber);
+		if (!best || entry.identificationDate >= best.identificationDate) {
+			latestByBarcode.set(entry.catalogueNumber, entry);
+		}
+	}
+	for (const specimen of specimensByCatalogue.values()) {
+		const winner = latestByBarcode.get(specimen.catalogueNumber);
+		specimen.currentDetermination = winner ? winner.scientificName : specimen.taxonomicName;
+	}
+	return specimensByCatalogue;
 }
