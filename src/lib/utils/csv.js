@@ -94,6 +94,20 @@ function splitImageFiles(raw) {
 }
 
 /**
+ * True for a determination that hasn't been resolved to a species — a bare genus
+ * or one carrying the explicit "sp." rank marker (e.g. "Macaranga sp."). These
+ * cards are the curator's to-identify pile and sort to the very end of the grid,
+ * after every named species, in all sort modes. "cf."/"aff." tentative IDs keep a
+ * specific epithet and are NOT treated as undetermined.
+ */
+export function isUndetermined(name) {
+	const words = String(name).trim().split(/\s+/);
+	if (words.length < 2) return true;
+	const last = words[words.length - 1].toLowerCase();
+	return last === 'sp.' || last === 'sp';
+}
+
+/**
  * Builds the species-grouped view (the structure the grid + filters consume)
  * from a Map of specimens keyed by catalogue number. Groups specimens by their
  * `currentDetermination` — in the absence of a determination log this equals
@@ -186,12 +200,22 @@ export function buildSpeciesView(specimensByCatalogue) {
 	// allocates a fresh collator per call.
 	const collator = new Intl.Collator(undefined, { sensitivity: 'variant' });
 	const speciesArray = Object.values(speciesByName);
-	const cmpName = (a, b) => collator.compare(a.taxonomicName, b.taxonomicName);
+	// Undetermined species (bare genus / "… sp.") always sort after named ones,
+	// as the primary key in every mode, so the to-identify pile sits at the very
+	// end of the grid regardless of family/genus/name tiers below.
+	const undetRank = (s) => (isUndetermined(s.taxonomicName) ? 1 : 0);
+	const cmpName = (a, b) =>
+		undetRank(a) - undetRank(b) ||
+		collator.compare(a.taxonomicName, b.taxonomicName);
 	const cmpFamily = (a, b) =>
+		undetRank(a) - undetRank(b) ||
 		collator.compare(a.family, b.family) ||
 		collator.compare(a.genus, b.genus) ||
 		cmpName(a, b);
-	const cmpOrder = (a, b) => collator.compare(a.order, b.order) || cmpFamily(a, b);
+	const cmpOrder = (a, b) =>
+		undetRank(a) - undetRank(b) ||
+		collator.compare(a.order, b.order) ||
+		cmpFamily(a, b);
 	const sortedByName = [...speciesArray].sort(cmpName);
 	const sortedByFamily = [...speciesArray].sort(cmpFamily);
 	const sortedByOrder = [...speciesArray].sort(cmpOrder);

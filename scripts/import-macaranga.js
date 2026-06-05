@@ -57,6 +57,18 @@ function toIsoDate(raw) {
 	return `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
 }
 
+/**
+ * Genus-only determinations arrive as a bare genus (e.g. "Macaranga"). Append an
+ * explicit "sp." rank marker so the grid label reads "Macaranga sp." rather than a
+ * bare genus name. A single-word name is the genus-rank signal; anything with a
+ * space (a binomial, or an already-marked "Macaranga sp.") is left untouched, so
+ * this is idempotent across re-imports.
+ */
+function normalizeDetermination(raw) {
+	const v = (raw ?? '').trim();
+	return v && !/\s/.test(v) ? `${v} sp.` : v;
+}
+
 /** Trim a coordinate and round to 6 dp; blank/non-numeric returns ''. */
 function cleanCoord(raw) {
 	const v = (raw ?? '').trim();
@@ -84,7 +96,7 @@ if (errors.length) console.warn('Parse warnings:', errors.slice(0, 3));
 const rows = data
 	.filter((r) => pick(r, 'TaxonomicName'))
 	.map((r) => ({
-		TaxonomicName: pick(r, 'TaxonomicName'),
+		TaxonomicName: normalizeDetermination(pick(r, 'TaxonomicName')),
 		CatalogueNumber: pick(r, 'CatalogueNumber', 'Catalogue Number'),
 		Clade: pick(r, 'Clade'),
 		Order: '', // not provided by the source; curators can fill later

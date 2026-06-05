@@ -16,6 +16,11 @@ export const datasets = [
 		id: 'ranomafana',
 		label: 'Ranomafana',
 		csvPath: '/data/Ranomafana_herbarium_images_260423.csv'
+	},
+	{
+		id: 'macaranga',
+		label: 'Macaranga',
+		csvPath: '/data/Macaranga_Kew_260604.csv'
 	}
 ];
 
