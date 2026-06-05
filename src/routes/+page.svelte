@@ -10,8 +10,10 @@
 	} from '$lib/stores/folder.js';
 	import { currentDatasetStore, restoreDataset } from '$lib/stores/dataset.js';
 	import { restoreTheme } from '$lib/stores/theme.js';
+	import { viewModeStore } from '$lib/stores/view.js';
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import SpeciesGrid from '$lib/components/SpeciesGrid.svelte';
+	import CurationView from '$lib/components/CurationView.svelte';
 
 	let loadedDatasetId = $state(null);
 	// False while restoreFolderHandle is in flight — gates CSV loading so we
@@ -147,6 +149,10 @@
 	</aside>
 
 	<main class="flex-1 overflow-y-auto p-6 dark:bg-gray-950">
-		<SpeciesGrid species={$filteredSpecies} />
+		{#if $viewModeStore === 'curate'}
+			<CurationView />
+		{:else}
+			<SpeciesGrid species={$filteredSpecies} />
+		{/if}
 	</main>
 </div>

@@ -2,8 +2,10 @@
 	import { taxaStore, taxaSourceStore, taxaSourceFilenameStore, csvLoadErrorStore, filterStore, filteredSpecies, totalSpeciesCount, availableFamilies, availableGenera, vernacularOptions, filterOptionCounts, DEFAULT_HABITS } from '$lib/stores/taxa.js';
 	import { folderHandleStore, pendingFolderHandleStore, selectFolder, reconnectFolder } from '$lib/stores/folder.js';
 	import { currentDatasetStore } from '$lib/stores/dataset.js';
+	import { viewModeStore } from '$lib/stores/view.js';
 	import { VERSION } from '$lib/version.js';
 	import DatasetSelector from './DatasetSelector.svelte';
+	import BrowseCurateToggle from './BrowseCurateToggle.svelte';
 	import HabitPills from './HabitPills.svelte';
 	import SortPills from './SortPills.svelte';
 	import ThemeToggle from './ThemeToggle.svelte';
@@ -82,6 +84,12 @@
 		<ThemeToggle />
 	</div>
 
+	<!-- Browse / Curate mode -->
+	<div>
+		<h2 class="mb-1 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">View</h2>
+		<BrowseCurateToggle />
+	</div>
+
 	<hr class="border-gray-200 dark:border-gray-700" />
 
 	<!-- Folder picker -->
@@ -135,6 +143,7 @@
 		{/if}
 	</div>
 
+	{#if $viewModeStore === 'browse'}
 	<hr class="border-gray-200 dark:border-gray-700" />
 
 	<!-- Sort order -->
@@ -433,4 +442,5 @@
 		Showing <span class="font-semibold text-gray-800 dark:text-gray-200">{$filteredSpecies.length}</span>
 		of {$totalSpeciesCount} species
 	</p>
+	{/if}
 </div>

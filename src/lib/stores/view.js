@@ -1,0 +1,14 @@
+import { writable } from 'svelte/store';
+
+/**
+ * Top-level UI mode:
+ *   'browse' — the species grid (the original checklist/ID view).
+ *   'curate' — the per-specimen table (Phase B curation mode).
+ * Session-only (not persisted) — every reload starts in Browse, which is the
+ * safe default for the field-botanist audience who never touch curation.
+ */
+export const viewModeStore = writable('browse');
+
+export function setViewMode(mode) {
+	viewModeStore.set(mode);
+}
