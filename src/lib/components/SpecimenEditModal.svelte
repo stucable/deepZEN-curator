@@ -1,5 +1,5 @@
 <script>
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { taxaStore, identificationLogStore } from '$lib/stores/taxa.js';
 	import { folderHandleStore } from '$lib/stores/folder.js';
 	import { currentDatasetStore } from '$lib/stores/dataset.js';
@@ -12,12 +12,15 @@
 
 	// Editable fields, seeded once from the specimen (the modal is keyed per row,
 	// so a new instance mounts for each specimen — no need to re-sync on change).
-	let det = $state(specimen.currentDetermination);
-	let lat = $state(specimen.lat == null ? '' : String(specimen.lat));
-	let lng = $state(specimen.lng == null ? '' : String(specimen.lng));
-	let country = $state(specimen.country);
-	let recordedBy = $state(specimen.recordedBy);
-	let recordNumber = $state(specimen.recordNumber);
+	// untrack captures the initial values deliberately, so the compiler doesn't
+	// warn that we're only reading specimen's first value.
+	const seed = untrack(() => specimen);
+	let det = $state(seed.currentDetermination);
+	let lat = $state(seed.lat == null ? '' : String(seed.lat));
+	let lng = $state(seed.lng == null ? '' : String(seed.lng));
+	let country = $state(seed.country);
+	let recordedBy = $state(seed.recordedBy);
+	let recordNumber = $state(seed.recordNumber);
 	let remarks = $state('');
 
 	let saving = $state(false);
