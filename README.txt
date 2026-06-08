@@ -1,4 +1,4 @@
-deepZEN-curator  —  v0.8  (Ankarafantsika + Ranomafana + Macaranga, 2026-06-05)
+deepZEN-curator  —  v0.9  (Ankarafantsika + Ranomafana + Macaranga, 2026-06-08)
 ===============================================================================
 
 Offline herbarium image browser for field botanists in Madagascar.
@@ -37,6 +37,40 @@ QUICK START (Windows 11)
 Each dataset's image-folder choice is remembered between sessions. If
 Chrome forgets (e.g. after a browser reset), just click "Reconnect" or
 "Select image folder" again.
+
+
+RUNNING ON A MAC
+----------------
+Use start.command (not start.bat — that one is for Windows).
+
+1. Unzip this folder somewhere convenient (e.g. your Desktop).
+
+2. The FIRST time only, you must right-click start.command and choose
+   "Open" (double-clicking won't work yet). macOS will warn that the
+   file is from an unidentified developer — click "Open" again to
+   confirm. After this first time, double-click works normally.
+
+   (Why: anything that arrives by email/download is quarantined by
+   macOS. Right-click -> Open tells macOS you trust this file.)
+
+3. A Terminal window opens and Google Chrome opens at
+   http://localhost:5173. Keep the Terminal window open while you use
+   the app; closing it stops the local server.
+
+4. From here, follow steps 4-7 in QUICK START above (pick a dataset,
+   select its image folder, browse).
+
+If start.command will not run at all:
+   - "Python 3 was not found": the window tells you to run
+       xcode-select --install
+     in Terminal. Click "Install", let it finish, then open
+     start.command again. (Macs do not ship with Python ready to use.)
+   - If double-click does nothing even after the right-click -> Open
+     step, open the Terminal app, type  bash  followed by a space,
+     then drag start.command into the window and press Return.
+
+The app needs Google Chrome (or Microsoft Edge). It will NOT work in
+Safari or Firefox — see CHROME ONLY below.
 
 
 FIRST USE IS SLOW (THIS IS NORMAL)
@@ -239,7 +273,7 @@ REPORTING ISSUES / GETTING UPDATES
 ----------------------------------
 - If something looks wrong (missing species, broken image, weird
   filter behaviour), email Stuart with a screenshot and the
-  version number at the top of this file (v0.7).
+  version number at the top of this file (v0.9).
 - New versions will arrive by email as a small zip. Unzip over
   the old folder (or delete the old folder first to avoid stale
   cached files), then double-click start.bat as before.
