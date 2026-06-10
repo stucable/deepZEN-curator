@@ -166,12 +166,15 @@
 	{#if $viewModeStore === 'browse'}
 	<hr class="border-gray-200 dark:border-gray-700" />
 
-	<!-- Sort order -->
+	<!-- Sort order (browse only — sort is irrelevant to the map) -->
 	<div>
 		<h2 class="mb-1 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Sort by</h2>
 		<SortPills />
 	</div>
+	{/if}
 
+	{#if $viewModeStore === 'browse' || $viewModeStore === 'map'}
+	<!-- Filters drive both the grid and which species the map plots -->
 	<hr class="border-gray-200 dark:border-gray-700" />
 
 	<h2 class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Filters</h2>

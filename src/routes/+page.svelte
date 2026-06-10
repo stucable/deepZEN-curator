@@ -13,9 +13,11 @@
 	import { restoreTheme } from '$lib/stores/theme.js';
 	import { restoreCuratorName } from '$lib/stores/curator.js';
 	import { viewModeStore } from '$lib/stores/view.js';
+	import { clearSelection } from '$lib/stores/map.js';
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import SpeciesGrid from '$lib/components/SpeciesGrid.svelte';
 	import CurationView from '$lib/components/CurationView.svelte';
+	import MapView from '$lib/components/MapView.svelte';
 
 	let loadedDatasetId = $state(null);
 	// False while restoreFolderHandle is in flight — gates CSV loading so we
@@ -156,6 +158,7 @@
 			csvLoadErrorStore.set(null);
 			identificationLogStore.set([]);
 			filterStore.set(defaultFilterState());
+			clearSelection();
 			folderHandleStore.set(null);
 			pendingFolderHandleStore.set(null);
 			(async () => {
@@ -175,6 +178,15 @@
 		const generation = ++csvLoadGeneration;
 		loadFromSource(ds, folder, generation);
 	});
+
+	// If the loaded dataset has no georeferenced specimens, the Map mode isn't
+	// reachable (the toggle hides it) — fall back to Browse so we never render an
+	// empty map. Mirrors the active-sort fallback for degenerate datasets.
+	$effect(() => {
+		if ($viewModeStore === 'map' && $taxaStore && !$taxaStore.geolocatedSpecimens?.length) {
+			viewModeStore.set('browse');
+		}
+	});
 </script>
 
 <div class="flex h-screen overflow-hidden bg-white dark:bg-gray-950">
@@ -185,6 +197,8 @@
 	<main class="flex-1 overflow-y-auto p-6 dark:bg-gray-950">
 		{#if $viewModeStore === 'curate'}
 			<CurationView />
+		{:else if $viewModeStore === 'map'}
+			<MapView />
 		{:else}
 			<SpeciesGrid species={$filteredSpecies} />
 		{/if}

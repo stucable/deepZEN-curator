@@ -11,7 +11,8 @@
     "check:data": "node scripts/validate-data.js",
     "check:phaseb": "node scripts/verify-phaseb-datalayer.js",
     "check:phaseb:persist": "node scripts/verify-phaseb-persistence.js",
-    "check": "npm run check:data && npm run build"
+    "check:geo": "node scripts/verify-geo.js",
+    "check": "npm run check:data && npm run check:geo && npm run build"
   },
   "devDependencies": {
     "@sveltejs/adapter-static": "^3.0.0",
