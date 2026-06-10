@@ -1,7 +1,17 @@
 import { writable, derived } from 'svelte/store';
+import { selectionPolygonStore } from './map.js';
+import { pointInRing } from '$lib/utils/geo.js';
 
 /** Raw data loaded from CSV. null until loadSpeciesData() completes. */
 export const taxaStore = writable(null);
+
+/**
+ * Parsed identifications-log entries for the active dataset (the append-only
+ * re-ID history overlaid on the base CSV at load). Empty array when no log file
+ * is present. The curation edit modal reads this to show a specimen's ID history
+ * and pushes onto it after a re-identification is appended.
+ */
+export const identificationLogStore = writable([]);
 
 /**
  * Set when a custom override CSV inside the user's folder failed to parse.
@@ -112,13 +122,30 @@ function applyFilters(speciesArr, $filter, exceptField = null) {
 }
 
 /**
+ * Set of species keys (taxonomicName == buildSpeciesView's grouping key, which is
+ * the specimen's currentDetermination) that have at least one geolocated specimen
+ * inside the drawn polygon. Returns null when no polygon is active. This is the one
+ * specimen-derived predicate; species-level filters stay in applyFilters.
+ */
+function speciesKeysInPolygon($taxa, polygon) {
+	if (!polygon || polygon.length < 3) return null;
+	const keys = new Set();
+	for (const s of $taxa.geolocatedSpecimens) {
+		if (pointInRing(s.lng, s.lat, polygon)) keys.add(s.currentDetermination);
+	}
+	return keys;
+}
+
+/**
  * Derived: species array filtered by current filter selection, sorted per the
  * active `sortStore` mode. Sources from one of three pre-sorted arrays built
  * at parse time; Array.filter preserves order so no runtime sort is needed.
+ * A map polygon, when drawn, narrows the result to species occurring in that
+ * region (a species with no geolocated specimen inside is dropped).
  */
 export const filteredSpecies = derived(
-	[taxaStore, filterStore, sortStore],
-	([$taxa, $filter, $sort]) => {
+	[taxaStore, filterStore, sortStore, selectionPolygonStore],
+	([$taxa, $filter, $sort, $polygon]) => {
 		if (!$taxa) return [];
 
 		const source =
@@ -126,7 +153,11 @@ export const filteredSpecies = derived(
 			$sort === 'family' ? $taxa.sortedByFamily :
 			$taxa.sortedByOrder;
 
-		return applyFilters(source, $filter);
+		const filtered = applyFilters(source, $filter);
+
+		const inPolygon = speciesKeysInPolygon($taxa, $polygon);
+		if (!inPolygon) return filtered;
+		return filtered.filter((s) => inPolygon.has(s.taxonomicName));
 	}
 );
 

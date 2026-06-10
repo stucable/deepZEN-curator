@@ -29,8 +29,6 @@
  *                                              ';' separated, e.g.
  *                                              "K004152211; K004152211_a")
  *   "Regional Information"                 -> Locality          (absent -> blank)
- *   Occurrence                             -> OccurrenceID       (absent -> blank)
- *   POWO                                   -> PowoId             (absent -> blank)
  *   ID, "Image Count"                      -> dropped
  */
 import { readFile, writeFile } from 'node:fs/promises';
@@ -112,9 +110,7 @@ const rows = data
 		RecordedBy: pick(r, 'RecordedBy', 'Collectors', 'Collected By'),
 		RecordNumber: pick(r, 'RecordNumber', 'CollectionNumber', 'CollectorNumber', 'Collector Number'),
 		CollectionDate: toIsoDate(pick(r, 'CollectionDate', 'Collection Date')),
-		OccurrenceID: pick(r, 'OccurrenceID', 'Occurrence'),
 		Country: pick(r, 'Country', 'Country ISO'),
-		PowoId: pick(r, 'PowoId', 'POWO'),
 		ImageFile: pick(r, 'ImageFile', 'Barcode')
 	}));
 

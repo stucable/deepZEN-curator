@@ -1,6 +1,13 @@
 import { writable } from 'svelte/store';
 import { get as idbGet, set as idbSet, del as idbDel } from 'idb-keyval';
-import { DEFAULT_DATASET_ID, getOverridePrefix } from '$lib/datasets.js';
+import {
+	DEFAULT_DATASET_ID,
+	isOverrideName,
+	isIdentificationLogName,
+	getOverrideFilename,
+	getIdentificationLogFilename
+} from '$lib/datasets.js';
+import { serializeSpecimensCsv, appendIdentificationToLog } from '$lib/utils/csv.js';
 
 const LEGACY_KEY = 'imageFolderHandle';
 
@@ -37,11 +44,12 @@ async function migrateLegacyHandle() {
 }
 
 /**
- * Requests read permission on a directory handle if not already granted.
- * Returns true if permission is granted.
+ * Requests permission on a directory handle if not already granted. Defaults to
+ * read; pass `'readwrite'` to escalate before a save. Requesting a stronger mode
+ * must happen inside a user gesture (a click handler). Returns true if granted.
  */
-export async function verifyPermission(handle) {
-	const opts = { mode: 'read' };
+export async function verifyPermission(handle, mode = 'read') {
+	const opts = { mode };
 	if ((await handle.queryPermission(opts)) === 'granted') return true;
 	if ((await handle.requestPermission(opts)) === 'granted') return true;
 	return false;
@@ -111,33 +119,43 @@ export async function reconnectFolder(datasetId) {
 }
 
 /**
- * Looks for a per-user override CSV inside an already-permission-granted
- * folder handle. Scans for files matching `<prefix>*.csv` where the prefix
- * is derived from the dataset's shipped CSV name (everything up to the last
- * underscore of the stem). A literal copy of the shipped filename is ignored
- * so backups don't accidentally trigger override mode. Matching is
- * case-insensitive. When multiple overrides are present the most recently
- * modified wins — matches "use my newest work".
- *
- * Returns `{ text, filename }` when found and readable, or `null` when no
- * override is present (the normal case).
+ * Scans a permission-granted folder for the newest file whose name satisfies
+ * `matches`, returning `{ text, filename }` (most-recently-modified wins —
+ * "use my newest work") or `null` when none match. Shared by the override and
+ * identifications-log discovery below.
  */
-export async function readCustomCsvFromFolder(folderHandle, dataset) {
-	const prefix = getOverridePrefix(dataset).toLowerCase();
-	const shippedBasename = dataset.csvPath.split('/').pop().toLowerCase();
+async function readNewestMatchingFile(folderHandle, matches) {
 	const candidates = [];
 	for await (const [name, handle] of folderHandle.entries()) {
-		if (handle.kind !== 'file') continue;
-		const lower = name.toLowerCase();
-		if (!lower.startsWith(prefix) || !lower.endsWith('.csv')) continue;
-		if (lower === shippedBasename) continue;
-		const file = await handle.getFile();
-		candidates.push({ name, file });
+		if (handle.kind !== 'file' || !matches(name)) continue;
+		candidates.push({ name, file: await handle.getFile() });
 	}
 	if (candidates.length === 0) return null;
 	candidates.sort((a, b) => b.file.lastModified - a.file.lastModified);
 	const { name, file } = candidates[0];
 	return { text: await file.text(), filename: name };
+}
+
+/**
+ * Looks for a per-user override CSV inside an already-permission-granted folder.
+ * An override shares the dataset's prefix, ends `.csv`, and is neither the
+ * shipped CSV (a backup) nor the identifications log (which also shares the
+ * prefix) — see isOverrideName. Case-insensitive; newest wins.
+ *
+ * Returns `{ text, filename }` when found and readable, or `null` when no
+ * override is present (the normal case).
+ */
+export function readCustomCsvFromFolder(folderHandle, dataset) {
+	return readNewestMatchingFile(folderHandle, (name) => isOverrideName(dataset, name));
+}
+
+/**
+ * Looks for this dataset's append-only identifications log in the folder (a file
+ * named `<overridePrefix>identifications_*.csv`). Returns `{ text, filename }` or
+ * `null`. Discovered distinctly from the override so the two never collide.
+ */
+export function readIdentificationLog(folderHandle, dataset) {
+	return readNewestMatchingFile(folderHandle, (name) => isIdentificationLogName(dataset, name));
 }
 
 /**
@@ -158,4 +176,54 @@ export async function selectFolder(datasetId) {
 			console.warn('Failed to select folder:', err);
 		}
 	}
+}
+
+/**
+ * Escalates the folder handle to readwrite (this is the "read→readwrite on first
+ * save" step — must run inside a user gesture) and writes `text` to `filename`,
+ * creating the file or replacing its contents. Low-level; the override / log
+ * helpers below build the filename and content. Throws if permission is denied.
+ */
+async function writeCsvToFolder(folderHandle, filename, text) {
+	const granted = await verifyPermission(folderHandle, 'readwrite');
+	if (!granted) throw new Error('Write permission denied for the image folder');
+	const fileHandle = await folderHandle.getFileHandle(filename, { create: true });
+	const writable = await fileHandle.createWritable();
+	try {
+		await writable.write(text);
+	} finally {
+		await writable.close();
+	}
+}
+
+/**
+ * Writes the full specimen set back to a per-user override CSV (a complete,
+ * lossless personalised copy — the same kind of file a user can hand-drop). The
+ * caller has already mutated specimens (corrected coords/country/collectors and
+ * stamped EditedAt). Targets, in order: an explicit `filename`, else the user's
+ * existing override file (so we overwrite it, not spawn a second), else a fresh
+ * `<prefix><user>.csv`. Returns the filename written.
+ * @returns {Promise<string>}
+ */
+export async function writeSpecimenOverride(folderHandle, dataset, specimensByCatalogue, { filename, user } = {}) {
+	const existing = filename ? null : await readCustomCsvFromFolder(folderHandle, dataset);
+	const targetName = filename || existing?.filename || getOverrideFilename(dataset, user);
+	await writeCsvToFolder(folderHandle, targetName, serializeSpecimensCsv(specimensByCatalogue));
+	return targetName;
+}
+
+/**
+ * Appends one re-identification to the dataset's identifications log, preserving
+ * the file's prior bytes (a literal text append, not a parse-rewrite, so log
+ * history is never reshaped). Creates the log with a header when none exists yet.
+ * `entry` is `{ catalogueNumber, scientificName, identifier, identificationDate, remarks }`.
+ * Returns the log filename written.
+ * @returns {Promise<string>}
+ */
+export async function appendIdentification(folderHandle, dataset, entry, { filename, user } = {}) {
+	const existing = await readIdentificationLog(folderHandle, dataset);
+	const text = appendIdentificationToLog(existing?.text ?? '', entry);
+	const targetName = filename || existing?.filename || getIdentificationLogFilename(dataset, user);
+	await writeCsvToFolder(folderHandle, targetName, text);
+	return targetName;
 }

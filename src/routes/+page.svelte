@@ -1,17 +1,23 @@
 <script>
 	import { onMount } from 'svelte';
-	import { loadSpeciesData, parseSpeciesCsv, CsvSchemaError } from '$lib/utils/csv.js';
-	import { taxaStore, taxaSourceStore, taxaSourceFilenameStore, csvLoadErrorStore, filterStore, filteredSpecies, DEFAULT_HABITS } from '$lib/stores/taxa.js';
+	import { loadSpeciesData, parseSpeciesCsv, applyIdentificationLog, CsvSchemaError } from '$lib/utils/csv.js';
+	import { taxaStore, taxaSourceStore, taxaSourceFilenameStore, csvLoadErrorStore, identificationLogStore, filterStore, filteredSpecies, DEFAULT_HABITS } from '$lib/stores/taxa.js';
 	import {
 		folderHandleStore,
 		pendingFolderHandleStore,
 		restoreFolderHandle,
-		readCustomCsvFromFolder
+		readCustomCsvFromFolder,
+		readIdentificationLog
 	} from '$lib/stores/folder.js';
 	import { currentDatasetStore, restoreDataset } from '$lib/stores/dataset.js';
 	import { restoreTheme } from '$lib/stores/theme.js';
+	import { restoreCuratorName } from '$lib/stores/curator.js';
+	import { viewModeStore } from '$lib/stores/view.js';
+	import { clearSelection } from '$lib/stores/map.js';
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import SpeciesGrid from '$lib/components/SpeciesGrid.svelte';
+	import CurationView from '$lib/components/CurationView.svelte';
+	import MapView from '$lib/components/MapView.svelte';
 
 	let loadedDatasetId = $state(null);
 	// False while restoreFolderHandle is in flight — gates CSV loading so we
@@ -23,8 +29,35 @@
 
 	onMount(async () => {
 		await restoreTheme();
+		await restoreCuratorName();
 		await restoreDataset();
 	});
+
+	/**
+	 * Overlays the dataset's append-only identifications log (if a folder is
+	 * connected) onto a freshly parsed base CSV, so saved re-identifications drive
+	 * currentDetermination after a reload. Updates identificationLogStore with the
+	 * parsed entries for the curation history panel. Returns the (possibly
+	 * regrouped) dataset, or null if the load generation went stale mid-read.
+	 */
+	async function overlayIdentifications(ds, folder, data, generation) {
+		if (!folder) {
+			identificationLogStore.set([]);
+			return data;
+		}
+		let logText = '';
+		try {
+			const log = await readIdentificationLog(folder, ds);
+			if (!isCurrentCsvLoad(generation)) return null;
+			logText = log?.text ?? '';
+		} catch (err) {
+			if (!isCurrentCsvLoad(generation)) return null;
+			console.warn(`[${ds.id}] Could not read identifications log:`, err);
+		}
+		const { data: overlaid, entries } = applyIdentificationLog(data, logText);
+		identificationLogStore.set(entries);
+		return overlaid;
+	}
 
 	function defaultFilterState() {
 		return {
@@ -60,7 +93,9 @@
 					try {
 						const data = parseSpeciesCsv(custom.text);
 						if (!isCurrentCsvLoad(generation)) return;
-						taxaStore.set(data);
+						const overlaid = await overlayIdentifications(ds, folder, data, generation);
+						if (overlaid === null) return;
+						taxaStore.set(overlaid);
 						taxaSourceStore.set('custom');
 						taxaSourceFilenameStore.set(custom.filename);
 						csvLoadErrorStore.set(null);
@@ -88,7 +123,9 @@
 		try {
 			const data = await loadSpeciesData(ds.csvPath);
 			if (!isCurrentCsvLoad(generation)) return;
-			taxaStore.set(data);
+			const overlaid = await overlayIdentifications(ds, folder, data, generation);
+			if (overlaid === null) return;
+			taxaStore.set(overlaid);
 			taxaSourceStore.set('shipped');
 			taxaSourceFilenameStore.set(null);
 			csvLoadErrorStore.set(customLoadError);
@@ -119,7 +156,9 @@
 			taxaSourceStore.set(null);
 			taxaSourceFilenameStore.set(null);
 			csvLoadErrorStore.set(null);
+			identificationLogStore.set([]);
 			filterStore.set(defaultFilterState());
+			clearSelection();
 			folderHandleStore.set(null);
 			pendingFolderHandleStore.set(null);
 			(async () => {
@@ -139,6 +178,15 @@
 		const generation = ++csvLoadGeneration;
 		loadFromSource(ds, folder, generation);
 	});
+
+	// If the loaded dataset has no georeferenced specimens, the Map mode isn't
+	// reachable (the toggle hides it) — fall back to Browse so we never render an
+	// empty map. Mirrors the active-sort fallback for degenerate datasets.
+	$effect(() => {
+		if ($viewModeStore === 'map' && $taxaStore && !$taxaStore.geolocatedSpecimens?.length) {
+			viewModeStore.set('browse');
+		}
+	});
 </script>
 
 <div class="flex h-screen overflow-hidden bg-white dark:bg-gray-950">
@@ -147,6 +195,12 @@
 	</aside>
 
 	<main class="flex-1 overflow-y-auto p-6 dark:bg-gray-950">
-		<SpeciesGrid species={$filteredSpecies} />
+		{#if $viewModeStore === 'curate'}
+			<CurationView />
+		{:else if $viewModeStore === 'map'}
+			<MapView />
+		{:else}
+			<SpeciesGrid species={$filteredSpecies} />
+		{/if}
 	</main>
 </div>

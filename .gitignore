@@ -9,6 +9,9 @@ dist/
 # Vite cache
 .vite/
 
+# Playwright MCP browser-test artifacts (page snapshots, console logs)
+.playwright-mcp/
+
 # Herbarium images (loaded at runtime via File System Access API, never bundled)
 herbarium_images/
 

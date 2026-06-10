@@ -3,6 +3,12 @@ import { get as idbGet, set as idbSet } from 'idb-keyval';
 const MAX_EDGE = 384;
 const JPEG_QUALITY = 0.8;
 const MAX_CONCURRENT_GENERATIONS = 4;
+// Hard cap on a single thumbnail generation. macOS Chrome can leave an image
+// decode pending forever under memory pressure; without a ceiling a stuck
+// decode holds its semaphore slot indefinitely and, after MAX_CONCURRENT
+// stalls, deadlocks the whole pipeline (every other card spins forever).
+// Timing out releases the slot and surfaces a per-card error instead.
+const GENERATION_TIMEOUT_MS = 20000;
 
 /**
  * Per-folderHandle cache of the `thumbnails/` subdir handle (or null if
@@ -75,18 +81,37 @@ function releaseSlot() {
 	if (next) next();
 }
 
+function withTimeout(promise, ms, label) {
+	let timer;
+	const timeout = new Promise((_, reject) => {
+		timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+	});
+	return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+// Decode via HTMLImageElement.decode() rather than createImageBitmap. The
+// latter can hang indefinitely on macOS Chrome for large JPEGs under memory
+// pressure; img.decode() is markedly more reliable. OffscreenCanvas.drawImage
+// accepts an HTMLImageElement, so the rest of the pipeline is unchanged.
 async function generateThumb(file) {
-	const bitmap = await createImageBitmap(file);
-	const scale = Math.min(MAX_EDGE / bitmap.width, MAX_EDGE / bitmap.height, 1);
-	const w = Math.max(1, Math.round(bitmap.width * scale));
-	const h = Math.max(1, Math.round(bitmap.height * scale));
-	const canvas = new OffscreenCanvas(w, h);
-	const ctx = canvas.getContext('2d');
-	ctx.imageSmoothingEnabled = true;
-	ctx.imageSmoothingQuality = 'high';
-	ctx.drawImage(bitmap, 0, 0, w, h);
-	bitmap.close();
-	return canvas.convertToBlob({ type: 'image/jpeg', quality: JPEG_QUALITY });
+	const url = URL.createObjectURL(file);
+	try {
+		const img = new Image();
+		img.decoding = 'async';
+		img.src = url;
+		await withTimeout(img.decode(), GENERATION_TIMEOUT_MS, 'decode');
+		const scale = Math.min(MAX_EDGE / img.naturalWidth, MAX_EDGE / img.naturalHeight, 1);
+		const w = Math.max(1, Math.round(img.naturalWidth * scale));
+		const h = Math.max(1, Math.round(img.naturalHeight * scale));
+		const canvas = new OffscreenCanvas(w, h);
+		const ctx = canvas.getContext('2d');
+		ctx.imageSmoothingEnabled = true;
+		ctx.imageSmoothingQuality = 'high';
+		ctx.drawImage(img, 0, 0, w, h);
+		return await canvas.convertToBlob({ type: 'image/jpeg', quality: JPEG_QUALITY });
+	} finally {
+		URL.revokeObjectURL(url);
+	}
 }
 
 /**

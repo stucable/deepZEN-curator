@@ -2,8 +2,11 @@
 	import { taxaStore, taxaSourceStore, taxaSourceFilenameStore, csvLoadErrorStore, filterStore, filteredSpecies, totalSpeciesCount, availableFamilies, availableGenera, vernacularOptions, filterOptionCounts, DEFAULT_HABITS } from '$lib/stores/taxa.js';
 	import { folderHandleStore, pendingFolderHandleStore, selectFolder, reconnectFolder } from '$lib/stores/folder.js';
 	import { currentDatasetStore } from '$lib/stores/dataset.js';
+	import { viewModeStore } from '$lib/stores/view.js';
+	import { curatorNameStore } from '$lib/stores/curator.js';
 	import { VERSION } from '$lib/version.js';
 	import DatasetSelector from './DatasetSelector.svelte';
+	import BrowseCurateToggle from './BrowseCurateToggle.svelte';
 	import HabitPills from './HabitPills.svelte';
 	import SortPills from './SortPills.svelte';
 	import ThemeToggle from './ThemeToggle.svelte';
@@ -82,6 +85,12 @@
 		<ThemeToggle />
 	</div>
 
+	<!-- Browse / Curate mode -->
+	<div>
+		<h2 class="mb-1 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">View</h2>
+		<BrowseCurateToggle />
+	</div>
+
 	<hr class="border-gray-200 dark:border-gray-700" />
 
 	<!-- Folder picker -->
@@ -135,14 +144,37 @@
 		{/if}
 	</div>
 
+	{#if $viewModeStore === 'curate'}
+		<!-- Curator identity — tags re-IDs and names the per-user CSVs -->
+		<div>
+			<label for="curator-name" class="mb-1 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+				Curator
+			</label>
+			<input
+				id="curator-name"
+				type="text"
+				bind:value={$curatorNameStore}
+				placeholder="Your name"
+				class="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+			/>
+			<p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+				Tags your re-identifications and names your saved CSV files.
+			</p>
+		</div>
+	{/if}
+
+	{#if $viewModeStore === 'browse'}
 	<hr class="border-gray-200 dark:border-gray-700" />
 
-	<!-- Sort order -->
+	<!-- Sort order (browse only — sort is irrelevant to the map) -->
 	<div>
 		<h2 class="mb-1 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Sort by</h2>
 		<SortPills />
 	</div>
+	{/if}
 
+	{#if $viewModeStore === 'browse' || $viewModeStore === 'map'}
+	<!-- Filters drive both the grid and which species the map plots -->
 	<hr class="border-gray-200 dark:border-gray-700" />
 
 	<h2 class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Filters</h2>
@@ -433,4 +465,5 @@
 		Showing <span class="font-semibold text-gray-800 dark:text-gray-200">{$filteredSpecies.length}</span>
 		of {$totalSpeciesCount} species
 	</p>
+	{/if}
 </div>

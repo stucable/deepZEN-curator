@@ -1,10 +1,14 @@
-deepZEN-curator  —  v0.8  (Ankarafantsika + Ranomafana + Macaranga, 2026-06-05)
+deepZEN-curator  —  v1.0  (Ankarafantsika + Ranomafana + Macaranga, 2026-06-10)
 ===============================================================================
 
 Offline herbarium image browser for field botanists in Madagascar.
 Ships with three datasets — Ankarafantsika, Ranomafana and Macaranga
 — switchable from the sidebar at runtime.
 Runs entirely on your laptop — no internet needed once you have the files.
+
+Three views — Images, Data and Map — let you browse specimen photos,
+edit the records behind them, and place georeferenced collections on a
+map of Madagascar.
 
 
 QUICK START (Windows 11)
@@ -37,6 +41,40 @@ QUICK START (Windows 11)
 Each dataset's image-folder choice is remembered between sessions. If
 Chrome forgets (e.g. after a browser reset), just click "Reconnect" or
 "Select image folder" again.
+
+
+RUNNING ON A MAC
+----------------
+Use start.command (not start.bat — that one is for Windows).
+
+1. Unzip this folder somewhere convenient (e.g. your Desktop).
+
+2. The FIRST time only, you must right-click start.command and choose
+   "Open" (double-clicking won't work yet). macOS will warn that the
+   file is from an unidentified developer — click "Open" again to
+   confirm. After this first time, double-click works normally.
+
+   (Why: anything that arrives by email/download is quarantined by
+   macOS. Right-click -> Open tells macOS you trust this file.)
+
+3. A Terminal window opens and Google Chrome opens at
+   http://localhost:5173. Keep the Terminal window open while you use
+   the app; closing it stops the local server.
+
+4. From here, follow steps 4-7 in QUICK START above (pick a dataset,
+   select its image folder, browse).
+
+If start.command will not run at all:
+   - "Python 3 was not found": the window tells you to run
+       xcode-select --install
+     in Terminal. Click "Install", let it finish, then open
+     start.command again. (Macs do not ship with Python ready to use.)
+   - If double-click does nothing even after the right-click -> Open
+     step, open the Terminal app, type  bash  followed by a space,
+     then drag start.command into the window and press Return.
+
+The app needs Google Chrome (or Microsoft Edge). It will NOT work in
+Safari or Firefox — see CHROME ONLY below.
 
 
 FIRST USE IS SLOW (THIS IS NORMAL)
@@ -80,6 +118,81 @@ start.bat will tell you if Python is missing. To install it:
 After installing, close the window and double-click start.bat again.
 
 
+THREE VIEWS: IMAGES, DATA & MAP
+-------------------------------
+Three buttons at the top of the sidebar switch what the main area
+shows. All three share the dataset and image folder you have selected.
+
+  Images   The default — the grid of species cards and thumbnails
+           described above, with all the sidebar filters.
+
+  Data     A table of every specimen (one row per herbarium sheet):
+           barcode, determination, family, genus, country, locality,
+           collector, collection number and coordinates. Search by
+           barcode, determination, collector or collection number, and
+           narrow by country. This is where you check and correct the
+           records behind the images.
+
+  Map      Plots each georeferenced specimen on an offline map of
+           Madagascar. It only appears for datasets that have
+           coordinates (currently Macaranga; the park checklists have
+           none). See MAP & GEOREFERENCING below.
+
+
+EDITING RECORDS (Data and Map views)
+------------------------------------
+You can correct a specimen's determination, coordinates, country,
+collector and collection number, and add a re-identification.
+
+1. Select the dataset's image folder (the same one you browse from)
+   and type your name in the "Curator" box in the sidebar — your name
+   is attached to every change you make.
+2. In the Data view, click a row; or in the Map view, click a point.
+   An edit window opens showing the specimen's image and its full
+   identification history beside the editable fields.
+3. Change what you need and click Save. The first time you save, Chrome
+   asks for permission to edit files in the folder — approve it (the
+   button may say "Edit", "Save changes" or "Allow").
+4. Your edits are written to two small CSV files inside that dataset's
+   image folder, tagged with your name, so they survive a reload and
+   can be emailed to other curators:
+     - a determination log — your re-identifications, append-only
+     - a corrections file — coordinates, country, collector, etc.
+   The shipped data is never overwritten; delete these two files to
+   return to it. (The corrections file is the same personal CSV
+   described in EDIT THE SPECIES DATA YOURSELF below — you can edit
+   records in the app or by hand in Excel.)
+
+A changed determination updates the species name everywhere — grid,
+table and map — without a reload.
+
+
+MAP & GEOREFERENCING (Map view)
+-------------------------------
+- Each species has its own colour, listed in the legend on the right.
+  Click a species in the legend to show or hide it; use "Hide all" /
+  "Show all" to isolate one or two; drag the "Point size" slider to
+  make the dots bigger. (Above 16 species at once the map falls back to
+  a single colour — filter to fewer species for distinct colours.)
+- Scroll to zoom, drag to pan, "Reset view" to zoom back out.
+- "Find barcode or collector" jumps to any specimen in the dataset,
+  including ones that have no coordinates yet.
+- "Draw region" lets you outline an area on the map; the whole app
+  (grid, table and map) then narrows to species found inside it.
+  "Clear region filter" removes it.
+- To set or correct a specimen's position:
+    * drag its point to the right spot and Save in the window that
+      opens; or
+    * open the specimen (click its point, or find it in the search
+      box), click "Set location on map", click the correct spot, then
+      Save.
+  Specimens with no coordinates do not appear on the map yet — find
+  them in the search box (they are tagged "no coordinates"), open them,
+  and use "Set location on map".
+- To map every occurrence of one species, filter to it in the Images
+  view first, then switch to Map.
+
+
 FILTERS
 -------
 The sidebar lets you narrow the grid by any combination of:
@@ -119,11 +232,13 @@ How (repeat for each dataset you want to personalise):
    to its .jpg files):
      Ankarafantsika_herbarium_images_260422.csv
      Ranomafana_herbarium_images_260423.csv
+     Macaranga_Kew_260604.csv
 
 2. Rename the copy so it starts with the same prefix as the shipped
    file, followed by your name:
      Ankarafantsika_herbarium_images_<YourName>.csv
      Ranomafana_herbarium_images_<YourName>.csv
+     Macaranga_Kew_<YourName>.csv
    For example: Ankarafantsika_herbarium_images_Johny.csv
    (Capitalisation does not matter.)
 
@@ -173,11 +288,14 @@ Columns the app reads (case-sensitive):
     StemArmature,
     Tendrils
 
-Any other columns are ignored.
+Any other columns are ignored by the Images grid. The Data and Map
+views additionally use specimen-level columns when present — country,
+locality, collector, collection number, and latitude / longitude.
 
 Shipped data files:
   build\data\Ankarafantsika_herbarium_images_260422.csv
   build\data\Ranomafana_herbarium_images_260423.csv
+  build\data\Macaranga_Kew_260604.csv
 
 
 CHROME ONLY
@@ -239,7 +357,7 @@ REPORTING ISSUES / GETTING UPDATES
 ----------------------------------
 - If something looks wrong (missing species, broken image, weird
   filter behaviour), email Stuart with a screenshot and the
-  version number at the top of this file (v0.7).
+  version number at the top of this file (v1.0).
 - New versions will arrive by email as a small zip. Unzip over
   the old folder (or delete the old folder first to avoid stale
   cached files), then double-click start.bat as before.
