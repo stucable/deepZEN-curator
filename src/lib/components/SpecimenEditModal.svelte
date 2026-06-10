@@ -8,7 +8,16 @@
 	import { rebuildView, parseLat, parseLng } from '$lib/utils/csv.js';
 	import HerbariumImage from './HerbariumImage.svelte';
 
-	let { specimen, onClose = () => {} } = $props();
+	let {
+		specimen,
+		onClose = () => {},
+		// Map-view only: a handler to enter "click the map to set coordinates" mode,
+		// a {lng, lat} the map pushes back in after the click, and a flag that tucks
+		// the modal away (kept mounted, state preserved) while the curator clicks.
+		onPickLocation = null,
+		pendingLocation = null,
+		hidden = false
+	} = $props();
 
 	// Editable fields, seeded once from the specimen (the modal is keyed per row,
 	// so a new instance mounts for each specimen — no need to re-sync on change).
@@ -28,6 +37,16 @@
 	let overlayEl;
 
 	onMount(() => overlayEl?.focus());
+
+	// A map click (drag-drop or "Set location on map") pushes coordinates in via
+	// pendingLocation; fill the coordinate fields, leaving other in-progress edits
+	// untouched. Reruns only when the parent passes a fresh object.
+	$effect(() => {
+		if (pendingLocation) {
+			lat = pendingLocation.lat.toFixed(6);
+			lng = pendingLocation.lng.toFixed(6);
+		}
+	});
 
 	// Typeahead option sources, drawn from the loaded dataset.
 	const determinationOptions = $derived.by(() => {
@@ -126,10 +145,12 @@
 	}
 
 	function handleKeydown(e) {
+		if (hidden) return; // tucked away during map placement — parent owns Escape
 		if (e.key === 'Escape') onClose();
 	}
 
 	function handleOverlayClick(e) {
+		if (hidden) return;
 		if (e.target === overlayEl) onClose();
 	}
 
@@ -142,6 +163,7 @@
 <div
 	bind:this={overlayEl}
 	class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+	style:display={hidden ? 'none' : null}
 	onclick={handleOverlayClick}
 	onkeydown={handleKeydown}
 	tabindex="0"
@@ -224,6 +246,16 @@
 						<input id="edit-lng" type="text" inputmode="decimal" bind:value={lng} class={fieldClass} />
 					</div>
 				</div>
+
+				{#if onPickLocation}
+					<button
+						type="button"
+						onclick={onPickLocation}
+						class="-mt-1 cursor-pointer self-start rounded border border-emerald-600 px-2 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950"
+					>
+						Set location on map
+					</button>
+				{/if}
 
 				<div>
 					<label for="edit-country" class={labelClass}>Country</label>

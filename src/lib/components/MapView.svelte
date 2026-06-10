@@ -144,14 +144,17 @@
 	let searchFocus = $state(null); // last-selected match, kept ringed until next search
 
 	const SEARCH_LIMIT = 25;
+	// A specimen is "locatable" if it has valid in-bbox coordinates (so it plots and
+	// can be panned to). Un-georeferenced specimens are still searchable — they're the
+	// ones a curator georeferences via the modal's "Set location on map".
+	const isLocatable = (s) => s.lat != null && s.lng != null && inBbox(s.lng, s.lat);
 	const searchMatches = $derived.by(() => {
 		const q = query.trim().toLowerCase();
 		if (!q || !$taxaStore) return [];
 		const tokens = q.split(/\s+/);
 		const out = [];
 		let truncated = false;
-		for (const s of $taxaStore.geolocatedSpecimens) {
-			if (!inBbox(s.lng, s.lat)) continue; // must be locatable
+		for (const s of $taxaStore.specimensByCatalogue.values()) {
 			const hay = `${s.catalogueNumber} ${s.recordedBy} ${s.recordNumber}`.toLowerCase();
 			if (tokens.every((t) => hay.includes(t))) {
 				if (out.length >= SEARCH_LIMIT) {
@@ -172,8 +175,12 @@
 		viewBox = { x: x - w / 2, y: y - h / 2, w, h };
 	}
 	function selectSearchResult(s) {
-		panTo(s.lng, s.lat);
-		searchFocus = s;
+		if (isLocatable(s)) {
+			panTo(s.lng, s.lat);
+			searchFocus = s;
+		} else {
+			searchFocus = null; // nothing to pan to / ring; open the modal to georeference it
+		}
 		editing = s;
 		query = '';
 	}
@@ -200,7 +207,7 @@
 	let tipPos = $state({ x: 0, y: 0 });
 
 	function showTip(specimen, e) {
-		if (drawing) return;
+		if (drawing || placing) return;
 		hovered = specimen;
 		moveTip(e);
 	}
@@ -215,6 +222,26 @@
 
 	// ---- Edit modal ----------------------------------------------------------
 	let editing = $state(null);
+	// Click-to-georeference: `placing` tucks the modal away while the next map click
+	// sets the open specimen's coordinates; `pendingLocation` is the {lng, lat} pushed
+	// back into the modal (by a placement click or a point drag-drop).
+	let placing = $state(false);
+	let pendingLocation = $state(null);
+
+	function pickLocation() {
+		placing = true; // modal hides (hidden={placing}); next svg click sets coords
+	}
+	function cancelPlacing() {
+		placing = false;
+	}
+	function closeEditing() {
+		editing = null;
+		pendingLocation = null;
+		placing = false;
+	}
+	function onWindowKeydown(e) {
+		if (e.key === 'Escape' && placing) cancelPlacing();
+	}
 
 	// ---- Zoom / pan ----------------------------------------------------------
 	function svgPoint(e) {
@@ -235,6 +262,14 @@
 	// `click` retargets to the parent <svg>, so a point's own click is unreliable.
 	// Handling the whole gesture at the svg level sidesteps that entirely.
 	let pressedSpecimen = null;
+	// Dragging an existing point to reposition it: `draggingPoint` once a press on a
+	// point crosses the threshold, `dragPos` the live SVG position (preview marker),
+	// `dragResult` the dropped {specimen, lng, lat} handed to the click phase to open
+	// the modal pre-filled (opening on click, not pointerup, dodges the trailing-click
+	// backdrop-close hazard the tap path documents below).
+	let draggingPoint = $state(false);
+	let dragPos = $state(null);
+	let dragResult = null;
 	// Pixels the pointer must travel before a press becomes a pan (not a tap).
 	const PAN_THRESHOLD = 4;
 
@@ -245,7 +280,8 @@
 
 	function onPointerDown(e) {
 		pressedSpecimen = null;
-		if (drawing) return; // clicks add vertices instead
+		dragResult = null; // clears any uncollected drag (e.g. a drag with no trailing click)
+		if (drawing || placing) return; // clicks add vertices / set location instead
 		// Deliberately NOT using setPointerCapture: it would retarget pointer events
 		// to the svg. Panning works without capture while the pointer stays over the
 		// map; onpointerleave ends a drag that wanders off.
@@ -260,11 +296,23 @@
 	}
 	function onPointerMove(e) {
 		if (!panStart) return;
+		// Already dragging a point → keep tracking its position (the preview marker).
+		if (draggingPoint) {
+			dragPos = svgPoint(e);
+			return;
+		}
 		const dxPx = e.clientX - panStart.cx;
 		const dyPx = e.clientY - panStart.cy;
 		if (!panning && Math.hypot(dxPx, dyPx) < PAN_THRESHOLD) return;
+		// First time over threshold: a press that began on a point drags the point;
+		// a press on empty map pans.
+		if (!panning && pressedSpecimen) {
+			draggingPoint = true;
+			dragPos = svgPoint(e);
+			return;
+		}
 		panning = true;
-		pressedSpecimen = null; // a drag is not a tap
+		pressedSpecimen = null; // a pan is not a tap
 		const dx = (dxPx * viewBox.w) / panStart.rect.width;
 		const dy = (dyPx * viewBox.h) / panStart.rect.height;
 		viewBox = { ...viewBox, x: panStart.vbx - dx, y: panStart.vby - dy };
@@ -272,7 +320,14 @@
 	function onPointerUp() {
 		// Modal opening happens in onSvgClick (the click phase), not here: opening it
 		// on pointerup lets the trailing `click` land on the freshly-rendered backdrop
-		// and close it again. pressedSpecimen is carried through to the click.
+		// and close it again. A drag-drop stashes its result for that same click phase;
+		// a tap carries pressedSpecimen through.
+		if (draggingPoint && dragPos && pressedSpecimen) {
+			const { lng, lat } = unprojectXY(dragPos.x, dragPos.y);
+			dragResult = { specimen: pressedSpecimen, lng, lat };
+		}
+		draggingPoint = false;
+		dragPos = null;
 		panning = false;
 		panStart = null;
 	}
@@ -341,6 +396,23 @@
 	}
 
 	function onSvgClick(e) {
+		// A point was just dragged-and-dropped: open it pre-filled with the new coords.
+		if (dragResult) {
+			pendingLocation = { lng: dragResult.lng, lat: dragResult.lat };
+			editing = dragResult.specimen;
+			dragResult = null;
+			pressedSpecimen = null;
+			return;
+		}
+		// Placement mode: this click sets the open specimen's coordinates.
+		if (placing) {
+			const p = svgPoint(e);
+			if (!p) return;
+			const { lng, lat } = unprojectXY(p.x, p.y);
+			pendingLocation = { lng, lat };
+			placing = false; // modal reappears with the coordinate fields filled
+			return;
+		}
 		if (!drawing) {
 			// A tap on a point (pressedSpecimen captured at pointerdown, not panned away).
 			if (pressedSpecimen) {
@@ -371,6 +443,23 @@
 <div class="flex h-full flex-col gap-3">
 	<!-- Toolbar -->
 	<div class="flex flex-wrap items-center gap-2 text-sm">
+		{#if placing}
+			<div
+				class="flex w-full items-center gap-2 rounded bg-emerald-50 px-3 py-1.5 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
+			>
+				<span>
+					Click the map to set the location for
+					<span class="font-mono">{editing?.catalogueNumber}</span>
+				</span>
+				<button
+					type="button"
+					onclick={cancelPlacing}
+					class="ml-auto cursor-pointer rounded border border-emerald-600 px-3 py-1 font-medium text-emerald-700 hover:bg-emerald-100 dark:text-emerald-300 dark:hover:bg-emerald-900"
+				>
+					Cancel
+				</button>
+			</div>
+		{/if}
 		{#if !drawing}
 			<button
 				type="button"
@@ -451,6 +540,9 @@
 								>
 									<span class="font-mono text-gray-700 dark:text-gray-200">{m.catalogueNumber}</span>
 									<span class="text-gray-500 dark:text-gray-400"> · {m.currentDetermination}</span>
+									{#if !isLocatable(m)}
+										<span class="text-amber-600 dark:text-amber-400"> · no coordinates</span>
+									{/if}
 									<div class="text-gray-500 dark:text-gray-400">
 										{m.recordedBy || '—'}{m.recordNumber ? ` ${m.recordNumber}` : ''}
 									</div>
@@ -502,7 +594,7 @@
 					bind:this={svgEl}
 					viewBox={viewBoxStr}
 					preserveAspectRatio="xMidYMid meet"
-					class="h-full w-full {drawing ? 'cursor-crosshair' : panning ? 'cursor-grabbing' : 'cursor-grab'}"
+					class="h-full w-full {drawing || placing ? 'cursor-crosshair' : panning || draggingPoint ? 'cursor-grabbing' : 'cursor-grab'}"
 					onpointerdown={onPointerDown}
 					onpointermove={onPointerMove}
 					onpointerup={onPointerUp}
@@ -549,6 +641,20 @@
 						{/each}
 					{/if}
 
+					<!-- Live preview while dragging an existing point to reposition it -->
+					{#if draggingPoint && dragPos}
+						<circle
+							cx={dragPos.x}
+							cy={dragPos.y}
+							r={pointRadius * 1.3}
+							fill="#d97706"
+							fill-opacity="0.9"
+							stroke="#1f2937"
+							stroke-width={thinStroke}
+							pointer-events="none"
+						/>
+					{/if}
+
 					<!-- Specimen points. Click handling lives on the svg (pointerdown +
 					     pointerup) via data-cat, not on the circle's own click. -->
 					{#each visiblePoints as p, i (i)}
@@ -561,8 +667,8 @@
 							stroke="#1f2937"
 							stroke-width={thinStroke}
 							data-cat={p.specimen.catalogueNumber}
-							style:pointer-events={drawing ? 'none' : 'auto'}
-							class={drawing ? '' : 'cursor-pointer'}
+							style:pointer-events={drawing || placing ? 'none' : 'auto'}
+							class={drawing || placing ? '' : 'cursor-pointer'}
 							role="button"
 							aria-label={`${p.specimen.currentDetermination} ${p.specimen.catalogueNumber}`}
 							onmouseenter={(e) => showTip(p.specimen, e)}
@@ -574,16 +680,18 @@
 					<!-- Search highlight rings (live matches + last-selected), drawn on top
 					     and locatable even if a filter or legend toggle hid their points. -->
 					{#each searchMatches as m (m.catalogueNumber)}
-						{@const pt = projectLngLat(m.lng, m.lat)}
-						<circle
-							cx={pt.x}
-							cy={pt.y}
-							r={pointRadius * 2.2}
-							fill="none"
-							stroke="#d97706"
-							stroke-width={polyStroke}
-							pointer-events="none"
-						/>
+						{#if isLocatable(m)}
+							{@const pt = projectLngLat(m.lng, m.lat)}
+							<circle
+								cx={pt.x}
+								cy={pt.y}
+								r={pointRadius * 2.2}
+								fill="none"
+								stroke="#d97706"
+								stroke-width={polyStroke}
+								pointer-events="none"
+							/>
+						{/if}
 					{/each}
 					{#if searchFocus && inBbox(searchFocus.lng, searchFocus.lat)}
 						{@const pf = projectLngLat(searchFocus.lng, searchFocus.lat)}
@@ -666,5 +774,13 @@
 </div>
 
 {#if editing}
-	<SpecimenEditModal specimen={editing} onClose={() => (editing = null)} />
+	<SpecimenEditModal
+		specimen={editing}
+		onClose={closeEditing}
+		onPickLocation={pickLocation}
+		{pendingLocation}
+		hidden={placing}
+	/>
 {/if}
+
+<svelte:window onkeydown={onWindowKeydown} />
