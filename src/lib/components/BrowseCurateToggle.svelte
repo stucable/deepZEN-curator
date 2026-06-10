@@ -6,8 +6,8 @@
 	// park checklists have no coordinates, so the option auto-hides (mirrors the
 	// degenerate-filter auto-hide elsewhere).
 	const modes = $derived([
-		{ id: 'browse', label: 'Browse' },
-		{ id: 'curate', label: 'Curate' },
+		{ id: 'browse', label: 'Images' },
+		{ id: 'curate', label: 'Data' },
 		...($taxaStore?.geolocatedSpecimens?.length ? [{ id: 'map', label: 'Map' }] : [])
 	]);
 </script>
