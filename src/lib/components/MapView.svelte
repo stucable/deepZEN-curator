@@ -27,8 +27,10 @@
 	let viewBox = $state({ ...base });
 	const viewBoxStr = $derived(`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`);
 
+	// User-adjustable multiplier (toolbar slider) on the occurrence-point size.
+	let pointScale = $state(1);
 	// Keep point radius / stroke roughly constant on screen as the user zooms.
-	const pointRadius = $derived(viewBox.w * 0.0095);
+	const pointRadius = $derived(viewBox.w * 0.0095 * pointScale);
 	const thinStroke = $derived(viewBox.w * 0.003);
 	const polyStroke = $derived(viewBox.w * 0.006);
 
@@ -119,6 +121,11 @@
 	const visibleSpeciesCount = $derived(
 		new Set(visiblePoints.map((p) => p.specimen.currentDetermination)).size
 	);
+	// True when every species currently in the legend is hidden — drives the
+	// header toggle's label (Show all ⇄ Hide all).
+	const allHidden = $derived(
+		plot.legend.length > 0 && plot.legend.every((i) => hiddenSpecies.has(i.name))
+	);
 
 	function toggleSpecies(name) {
 		const next = new Set(hiddenSpecies);
@@ -127,6 +134,9 @@
 	}
 	function showAllSpecies() {
 		hiddenSpecies = new Set();
+	}
+	function hideAllSpecies() {
+		hiddenSpecies = new Set(plot.legend.map((i) => i.name));
 	}
 
 	// ---- Specimen search (whole dataset → locate + open modal) ---------------
@@ -440,7 +450,7 @@
 									class="block w-full cursor-pointer px-3 py-1.5 text-left hover:bg-emerald-50 dark:hover:bg-emerald-950"
 								>
 									<span class="font-mono text-gray-700 dark:text-gray-200">{m.catalogueNumber}</span>
-									<span class="font-species text-gray-500 dark:text-gray-400"> · {m.currentDetermination}</span>
+									<span class="text-gray-500 dark:text-gray-400"> · {m.currentDetermination}</span>
 									<div class="text-gray-500 dark:text-gray-400">
 										{m.recordedBy || '—'}{m.recordNumber ? ` ${m.recordNumber}` : ''}
 									</div>
@@ -454,6 +464,19 @@
 				</ul>
 			{/if}
 		</div>
+
+		<label class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+			Point size
+			<input
+				type="range"
+				min="0.6"
+				max="3"
+				step="0.2"
+				bind:value={pointScale}
+				aria-label="Point size"
+				class="h-4 w-24 cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-0.5 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-gray-300 dark:[&::-webkit-slider-runnable-track]:bg-gray-600 [&::-webkit-slider-thumb]:-mt-[5px] [&::-webkit-slider-thumb]:size-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-emerald-600"
+			/>
+		</label>
 
 		<span class="ml-auto text-xs text-gray-500 dark:text-gray-400">
 			{visiblePoints.length} points · {visibleSpeciesCount} species
@@ -583,7 +606,7 @@
 						style:left="{tipPos.x}px"
 						style:top="{tipPos.y}px"
 					>
-						<div class="font-species text-sm text-gray-900 dark:text-gray-100">
+						<div class="text-sm text-gray-900 dark:text-gray-100">
 							{hovered.currentDetermination}
 						</div>
 						<div class="text-gray-600 dark:text-gray-300">Barcode: {hovered.catalogueNumber}</div>
@@ -602,15 +625,13 @@
 			>
 				<div class="mb-2 flex items-center justify-between">
 					<h3 class="font-semibold uppercase text-gray-500 dark:text-gray-400">Species</h3>
-					{#if hiddenSpecies.size > 0}
-						<button
-							type="button"
-							onclick={showAllSpecies}
-							class="cursor-pointer text-emerald-700 hover:underline dark:text-emerald-400"
-						>
-							Show all
-						</button>
-					{/if}
+					<button
+						type="button"
+						onclick={allHidden ? showAllSpecies : hideAllSpecies}
+						class="cursor-pointer text-emerald-700 hover:underline dark:text-emerald-400"
+					>
+						{allHidden ? 'Show all' : 'Hide all'}
+					</button>
 				</div>
 				<ul class="flex flex-col gap-1 overflow-y-auto">
 					{#each plot.legend as item (item.name)}
@@ -627,8 +648,8 @@
 									class="inline-block size-3 shrink-0 rounded-full border border-gray-700"
 									style:background-color={item.colour}
 								></span>
-								<span class="font-species text-gray-800 dark:text-gray-200 {hidden ? 'line-through' : ''}">
-									{item.name}{item.undetermined ? ' (undetermined)' : ''}
+								<span class="text-sm text-gray-800 dark:text-gray-200">
+									{item.name}{item.undetermined ? ' (indet.)' : ''}
 								</span>
 							</button>
 						</li>
