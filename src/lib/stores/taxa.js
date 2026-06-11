@@ -1,5 +1,5 @@
 import { writable, derived } from 'svelte/store';
-import { selectionPolygonStore } from './map.js';
+import { selectionPolygonStore, includeUnlocatedStore } from './map.js';
 import { pointInRing } from '$lib/utils/geo.js';
 import { isUndetermined } from '$lib/utils/csv.js';
 
@@ -18,6 +18,23 @@ export const typeStatusByImageFile = derived(taxaStore, ($taxa) => {
 	for (const s of $taxa.specimensByCatalogue.values()) {
 		if (!s.typeStatus) continue;
 		for (const file of s.imageFiles) map.set(file, s.typeStatus);
+	}
+	return map;
+});
+
+/**
+ * Map of image-file basename → that specimen's { lat, lng }, for every image of a
+ * georeferenced specimen. Powers the region-polygon image filter (browseSpecies):
+ * a file's absence from this map means its specimen has no coordinates. Built like
+ * typeStatusByImageFile — specimen-level, separate from the species view. Specimens
+ * with a null lat or lng are deliberately skipped (absence == "no coordinates").
+ */
+export const imageFileLatLng = derived(taxaStore, ($taxa) => {
+	const map = new Map();
+	if (!$taxa) return map;
+	for (const s of $taxa.specimensByCatalogue.values()) {
+		if (s.lat == null || s.lng == null) continue;
+		for (const file of s.imageFiles) map.set(file, { lat: s.lat, lng: s.lng });
 	}
 	return map;
 });
@@ -186,6 +203,34 @@ export const filteredSpecies = derived(
 		const inPolygon = speciesKeysInPolygon($taxa, $polygon);
 		if (!inPolygon) return result;
 		return result.filter((s) => inPolygon.has(s.taxonomicName));
+	}
+);
+
+/**
+ * Derived: the species the Browse grid renders. Identical to `filteredSpecies`
+ * unless a region polygon is active, in which case each species is cloned with its
+ * `images` narrowed to the specimen sheets whose coordinates fall inside the polygon
+ * — plus, when `includeUnlocatedStore` is on (default), images of specimens that have
+ * no coordinates at all. Species left with no images are dropped, so empty cards never
+ * render. Kept separate from `filteredSpecies` on purpose: the map and the sidebar
+ * species count read `filteredSpecies` and must stay at species-occurrence granularity
+ * (a species with an in-region but imageless specimen still maps and still counts), so
+ * only the grid applies this image-level narrowing.
+ */
+export const browseSpecies = derived(
+	[filteredSpecies, selectionPolygonStore, includeUnlocatedStore, imageFileLatLng],
+	([$filtered, $polygon, $includeUnlocated, $latLng]) => {
+		if (!$polygon || $polygon.length < 3) return $filtered;
+
+		const out = [];
+		for (const s of $filtered) {
+			const images = s.images.filter((file) => {
+				const ll = $latLng.get(file);
+				return ll ? pointInRing(ll.lng, ll.lat, $polygon) : $includeUnlocated;
+			});
+			if (images.length) out.push({ ...s, images });
+		}
+		return out;
 	}
 );
 

@@ -1,7 +1,7 @@
 <script>
 	import { onMount } from 'svelte';
 	import { loadSpeciesData, parseSpeciesCsv, applyIdentificationLog, CsvSchemaError } from '$lib/utils/csv.js';
-	import { taxaStore, taxaSourceStore, taxaSourceFilenameStore, csvLoadErrorStore, identificationLogStore, filterStore, filteredSpecies, DEFAULT_HABITS } from '$lib/stores/taxa.js';
+	import { taxaStore, taxaSourceStore, taxaSourceFilenameStore, csvLoadErrorStore, identificationLogStore, filterStore, browseSpecies, DEFAULT_HABITS } from '$lib/stores/taxa.js';
 	import {
 		folderHandleStore,
 		pendingFolderHandleStore,
@@ -201,7 +201,7 @@
 		{:else if $viewModeStore === 'map'}
 			<MapView />
 		{:else}
-			<SpeciesGrid species={$filteredSpecies} />
+			<SpeciesGrid species={$browseSpecies} />
 		{/if}
 	</main>
 </div>
