@@ -131,13 +131,18 @@
 					{#each rows as s (s.catalogueNumber)}
 						<tr
 							onclick={() => (editing = s)}
-							onkeydown={(e) => { if (e.key === 'Enter') editing = s; }}
-							tabindex="0"
-							role="button"
-							aria-label="Edit {s.catalogueNumber}"
-							class="cursor-pointer border-t border-gray-100 odd:bg-white even:bg-gray-50 hover:bg-emerald-50 focus:bg-emerald-50 focus:outline-none dark:border-gray-800 dark:odd:bg-gray-900 dark:even:bg-gray-950 dark:hover:bg-emerald-950/40 dark:focus:bg-emerald-950/40"
+							class="cursor-pointer border-t border-gray-100 odd:bg-white even:bg-gray-50 hover:bg-emerald-50 focus-within:bg-emerald-50 dark:border-gray-800 dark:odd:bg-gray-900 dark:even:bg-gray-950 dark:hover:bg-emerald-950/40 dark:focus-within:bg-emerald-950/40"
 						>
-							<td class="px-3 py-2 font-mono text-xs whitespace-nowrap text-gray-700 dark:text-gray-300">{s.catalogueNumber}</td>
+							<td class="px-3 py-2 font-mono text-xs whitespace-nowrap text-gray-700 dark:text-gray-300">
+								<button
+									type="button"
+									onclick={() => (editing = s)}
+									aria-label="Edit {s.catalogueNumber}"
+									class="cursor-pointer rounded text-left hover:underline focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+								>
+									{s.catalogueNumber}
+								</button>
+							</td>
 							<td class="px-3 py-2 whitespace-nowrap text-gray-600 dark:text-gray-400" title={institutionName(s.institutionCode)}>{dash(s.institutionCode)}</td>
 							<td class="px-3 py-2 whitespace-nowrap">
 								{#if s.typeStatus}

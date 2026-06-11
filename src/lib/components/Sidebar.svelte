@@ -1,5 +1,5 @@
 <script>
-	import { taxaStore, taxaSourceStore, taxaSourceFilenameStore, csvLoadErrorStore, filterStore, filteredSpecies, totalSpeciesCount, availableFamilies, availableGenera, vernacularOptions, filterOptionCounts, DEFAULT_HABITS } from '$lib/stores/taxa.js';
+	import { taxaStore, taxaSourceStore, taxaSourceFilenameStore, csvLoadErrorStore, filterStore, determinedSpeciesCount, filteredSpeciesCounts, availableFamilies, availableGenera, vernacularOptions, filterOptionCounts, DEFAULT_HABITS } from '$lib/stores/taxa.js';
 	import { folderHandleStore, pendingFolderHandleStore, selectFolder, reconnectFolder } from '$lib/stores/folder.js';
 	import { currentDatasetStore } from '$lib/stores/dataset.js';
 	import { viewModeStore } from '$lib/stores/view.js';
@@ -40,6 +40,7 @@
 
 	function clearFilters() {
 		filterStore.set({
+			search: '',
 			order: '',
 			family: '',
 			genus: '',
@@ -192,6 +193,23 @@
 	<hr class="border-gray-200 dark:border-gray-700" />
 
 	<h2 class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Filters</h2>
+
+	<!-- Free-text search (name, family, genus, clade, vernacular) -->
+	{#if $taxaStore}
+		<div>
+			<label for="search-filter" class="mb-1 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+				Search
+			</label>
+			<input
+				id="search-filter"
+				type="search"
+				value={$filterStore.search}
+				oninput={handleTraitChange('search')}
+				placeholder="family, genus, species…"
+				class="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+			/>
+		</div>
+	{/if}
 
 	<!-- Clade filter -->
 	{#if $taxaStore && $taxaStore.allClades.length > 1}
@@ -474,10 +492,13 @@
 
 	<hr class="border-gray-200 dark:border-gray-700" />
 
-	<!-- Species count -->
+	<!-- Species count (determined only; the "Genus sp." to-identify pile is tallied separately) -->
 	<p class="text-sm text-gray-500 dark:text-gray-400">
-		Showing <span class="font-semibold text-gray-800 dark:text-gray-200">{$filteredSpecies.length}</span>
-		of {$totalSpeciesCount} species
+		Showing <span class="font-semibold text-gray-800 dark:text-gray-200">{$filteredSpeciesCounts.determined}</span>
+		of {$determinedSpeciesCount} species
+		{#if $filteredSpeciesCounts.undetermined > 0}
+			<span class="text-gray-400 dark:text-gray-500">· {$filteredSpeciesCounts.undetermined} to identify</span>
+		{/if}
 	</p>
 	{/if}
 </div>

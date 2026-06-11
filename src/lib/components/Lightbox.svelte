@@ -30,7 +30,7 @@
 	let viewportHeight = $state(0);
 
 	const currentCatalogue = $derived(images[currentIndex] || '');
-	const zoomLabel = $derived(scale === 1 ? '1×' : scale % 1 === 0 ? `${scale}×` : `${scale}×`);
+	const zoomLabel = $derived(`${scale}×`);
 	const isZoomed = $derived(scale > 1);
 
 	onMount(() => {
@@ -117,6 +117,9 @@
 	}
 
 	function clampTranslate() {
+		// Bail until the image (and viewport) have been measured — clamping against
+		// zero dimensions would snap any in-flight pan/zoom translate to 0.
+		if (!displayedWidth || !displayedHeight || !viewportWidth || !viewportHeight) return;
 		const maxPanX = Math.max(0, (displayedWidth * scale - viewportWidth) / 2);
 		const maxPanY = Math.max(0, (displayedHeight * scale - viewportHeight) / 2);
 		translateX = Math.max(-maxPanX, Math.min(maxPanX, translateX));

@@ -11,12 +11,21 @@ import { readdir, mkdir, stat } from 'node:fs/promises';
 import { join, parse } from 'node:path';
 import sharp from 'sharp';
 
+function numericFlag(flag, raw) {
+	const val = Number(raw);
+	if (raw === undefined || Number.isNaN(val)) {
+		console.error(`${flag} expects a number, got: ${raw ?? '(nothing)'}`);
+		process.exit(1);
+	}
+	return val;
+}
+
 function parseArgs(argv) {
 	const args = { folder: null, maxEdge: 384, quality: 80 };
 	for (let i = 0; i < argv.length; i++) {
 		const a = argv[i];
-		if (a === '--max-edge') args.maxEdge = Number(argv[++i]);
-		else if (a === '--quality') args.quality = Number(argv[++i]);
+		if (a === '--max-edge') args.maxEdge = numericFlag('--max-edge', argv[++i]);
+		else if (a === '--quality') args.quality = numericFlag('--quality', argv[++i]);
 		else if (!args.folder) args.folder = a;
 	}
 	return args;
