@@ -135,14 +135,18 @@ Three buttons at the top of the sidebar switch what the main area
 shows. All three share the dataset and image folder you have selected.
 
   Images   The default — the grid of species cards and thumbnails
-           described above, with all the sidebar filters.
+           described above, with all the sidebar filters. Type
+           specimens carry a small "TYPE" badge on their thumbnail.
 
   Data     A table of every specimen (one row per herbarium sheet):
-           barcode, determination, family, genus, country, locality,
-           collector, collection number and coordinates. Search by
-           barcode, determination, collector or collection number, and
-           narrow by country. This is where you check and correct the
-           records behind the images.
+           barcode, holding herbarium, type status, determination,
+           family, genus, country, locality, collector, collection
+           number and coordinates. Search by barcode, determination,
+           collector, collection number or herbarium, and narrow by
+           country or holding herbarium (the herbarium filter appears
+           only once a dataset holds sheets from more than one). This
+           is where you check and correct the records behind the
+           images.
 
   Map      Plots each georeferenced specimen on an offline map of
            Madagascar. It only appears for datasets that have
@@ -152,12 +156,16 @@ shows. All three share the dataset and image folder you have selected.
 
 EDITING RECORDS (Data and Map views)
 ------------------------------------
-You can correct a specimen's determination, coordinates, country,
-collector and collection number, and add a re-identification.
+You can correct a specimen's determination, holding herbarium,
+coordinates, country, collector and collection number, and record a
+re-identification — the new name, who made it, at which herbarium, the
+date, and any notes.
 
 1. Select the dataset's image folder (the same one you browse from)
    and type your name in the "Curator" box in the sidebar — your name
-   is attached to every change you make.
+   is attached to every change you make. Optionally fill in "Your
+   herbarium" (e.g. K) just below it; it pre-fills the herbarium on
+   each identification you record.
 2. In the Data view, click a row; or in the Map view, click a point.
    An edit window opens showing the specimen's image and its full
    identification history beside the editable fields.
@@ -168,11 +176,27 @@ collector and collection number, and add a re-identification.
    image folder, tagged with your name, so they survive a reload and
    can be emailed to other curators:
      - a determination log — your re-identifications, append-only
-     - a corrections file — coordinates, country, collector, etc.
+     - a corrections file — coordinates, country, holding herbarium,
+       collector, etc.
    The shipped data is never overwritten; delete these two files to
    return to it. (The corrections file is the same personal CSV
    described in EDIT THE SPECIES DATA YOURSELF below — you can edit
    records in the app or by hand in Excel.)
+
+Two kinds of "herbarium" appear in the edit window and mean different
+things:
+  - Holding herbarium — which institution owns the physical sheet
+    (e.g. K = Kew, P = Paris, TAN = Antananarivo). It defaults from the
+    barcode prefix (all current sheets are Kew, so K) and only needs
+    changing when you add a sheet from another herbarium.
+  - Determiner's herbarium — the institution of the person making the
+    identification, recorded on each re-identification (the "det." on a
+    herbarium label).
+
+You can also record a note WITHOUT changing the name: type it in the
+"ID remarks / notes" box and Save. It is filed as a dated entry on the
+current name, so you can flag an uncertain specimen ("needs checking")
+without re-identifying it.
 
 A changed determination updates the species name everywhere — grid,
 table and map — without a reload.
@@ -304,7 +328,14 @@ Columns the app reads (case-sensitive):
 
 Any other columns are ignored by the Images grid. The Data and Map
 views additionally use specimen-level columns when present — country,
-locality, collector, collection number, and latitude / longitude.
+locality, collector, collection number, and latitude / longitude, plus:
+
+  InstitutionCode    optional — the holding herbarium (e.g. K, P, TAN).
+                     If the column is absent it is taken from the
+                     barcode prefix, so all-K sheets read as Kew.
+  TypeStatus         optional — e.g. holotype / isotype. Shown as a
+                     "TYPE" badge on the thumbnail and a Type column in
+                     the Data view.
 
 Shipped data files:
   build\data\Ankarafantsika_herbarium_images_260422.csv

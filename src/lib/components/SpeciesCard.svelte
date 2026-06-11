@@ -1,5 +1,6 @@
 <script>
 	import { folderHandleStore } from '$lib/stores/folder.js';
+	import { typeStatusByImageFile } from '$lib/stores/taxa.js';
 	import HerbariumImage from './HerbariumImage.svelte';
 	import Lightbox from './Lightbox.svelte';
 
@@ -27,11 +28,21 @@
 
 	<div class="flex flex-wrap gap-2">
 		{#each species.images as cat, i}
-			<HerbariumImage
-				catalogueNumber={cat}
-				folderHandle={$folderHandleStore}
-				onclick={() => openLightbox(i)}
-			/>
+			<div class="relative">
+				<HerbariumImage
+					catalogueNumber={cat}
+					folderHandle={$folderHandleStore}
+					onclick={() => openLightbox(i)}
+				/>
+				{#if $typeStatusByImageFile.has(cat)}
+					<span
+						class="pointer-events-none absolute left-1 top-1 rounded bg-emerald-600/90 px-1 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white shadow"
+						title={$typeStatusByImageFile.get(cat)}
+					>
+						Type
+					</span>
+				{/if}
+			</div>
 		{/each}
 	</div>
 </article>

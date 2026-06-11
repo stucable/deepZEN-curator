@@ -2,6 +2,7 @@ import { writable } from 'svelte/store';
 import { get as idbGet, set as idbSet } from 'idb-keyval';
 
 const IDB_KEY = 'curatorName';
+const HERBARIUM_IDB_KEY = 'curatorHerbarium';
 
 /**
  * The curator's name. Tags each re-identification (Darwin Core `Identifier`) and
@@ -12,24 +13,41 @@ const IDB_KEY = 'curatorName';
  */
 export const curatorNameStore = writable('');
 
-// Don't persist before restoreCuratorName() has run, so the empty default can't
-// overwrite a saved value during hydration.
+/**
+ * The curator's home herbarium (the determiner's institution, e.g. "K"). Pre-fills
+ * the Herbarium field on each identification and is written to the `Herbarium`
+ * column of the identifications log. Sticky: the edit modal updates it after a
+ * save, so it usually only needs setting once. Persisted across sessions.
+ */
+export const curatorHerbariumStore = writable('');
+
+// Don't persist before the restores have run, so the empty defaults can't
+// overwrite saved values during hydration.
 let hydrated = false;
 
-/** Read the persisted curator name. Safe to call once onMount. */
+/** Read the persisted curator name + herbarium. Safe to call once onMount. */
 export async function restoreCuratorName() {
 	try {
-		const saved = await idbGet(IDB_KEY);
-		if (typeof saved === 'string') curatorNameStore.set(saved);
+		const [savedName, savedHerbarium] = await Promise.all([
+			idbGet(IDB_KEY),
+			idbGet(HERBARIUM_IDB_KEY)
+		]);
+		if (typeof savedName === 'string') curatorNameStore.set(savedName);
+		if (typeof savedHerbarium === 'string') curatorHerbariumStore.set(savedHerbarium);
 	} catch {
-		// IndexedDB unavailable — keep the empty default
+		// IndexedDB unavailable — keep the empty defaults
 	} finally {
 		hydrated = true;
 	}
 }
 
-// Persist every edit after hydration. `bind:value` in the sidebar drives this.
+// Persist every edit after hydration. `bind:value` in the sidebar drives these.
 curatorNameStore.subscribe((name) => {
 	if (!hydrated) return;
 	idbSet(IDB_KEY, name).catch(() => {});
+});
+
+curatorHerbariumStore.subscribe((herbarium) => {
+	if (!hydrated) return;
+	idbSet(HERBARIUM_IDB_KEY, herbarium).catch(() => {});
 });

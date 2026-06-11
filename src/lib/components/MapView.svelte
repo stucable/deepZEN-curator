@@ -831,6 +831,9 @@
 						</div>
 						<div class="text-gray-600 dark:text-gray-300">Barcode: {hovered.catalogueNumber}</div>
 						<div class="text-gray-600 dark:text-gray-300">
+							Herbarium: {hovered.institutionCode || '—'}{hovered.typeStatus ? ` · ${hovered.typeStatus}` : ''}
+						</div>
+						<div class="text-gray-600 dark:text-gray-300">
 							{hovered.recordedBy || '—'}{hovered.recordNumber ? ` ${hovered.recordNumber}` : ''}
 						</div>
 					</div>

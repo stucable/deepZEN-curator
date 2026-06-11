@@ -111,7 +111,10 @@ const rows = data
 		RecordNumber: pick(r, 'RecordNumber', 'CollectionNumber', 'CollectorNumber', 'Collector Number'),
 		CollectionDate: toIsoDate(pick(r, 'CollectionDate', 'Collection Date')),
 		Country: pick(r, 'Country', 'Country ISO'),
-		ImageFile: pick(r, 'ImageFile', 'Barcode')
+		InstitutionCode:
+				pick(r, 'InstitutionCode', 'Institution Code') ||
+				(pick(r, 'CatalogueNumber', 'Catalogue Number').match(/^[A-Za-z]+/)?.[0]?.toUpperCase() ?? ''),
+			ImageFile: pick(r, 'ImageFile', 'Barcode')
 	}));
 
 if (rows.length === 0) {

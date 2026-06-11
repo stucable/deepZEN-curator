@@ -1,5 +1,6 @@
 <script>
 	import { taxaStore } from '$lib/stores/taxa.js';
+	import { INSTITUTION_NAMES } from '$lib/utils/csv.js';
 	import SpecimenEditModal from './SpecimenEditModal.svelte';
 
 	// Specimen-level controls, local to the curation view (the sidebar's
@@ -7,6 +8,7 @@
 	// with multiple values across a dataset, so it filters per specimen.
 	let search = $state('');
 	let country = $state('');
+	let herbarium = $state('');
 
 	// The specimen currently open in the edit modal, or null. Clicking a row sets
 	// it; the modal mutates the shared specimen map + resets taxaStore on save, so
@@ -23,6 +25,12 @@
 		[...new Set(specimens.map((s) => s.country).filter(Boolean))].sort((a, b) => a.localeCompare(b))
 	);
 
+	// Holding herbarium (institution) options — specimen-level, like Country. The
+	// filter only appears once the dataset spans more than one herbarium.
+	const herbariumOptions = $derived(
+		[...new Set(specimens.map((s) => s.institutionCode).filter(Boolean))].sort((a, b) => a.localeCompare(b))
+	);
+
 	const collator = new Intl.Collator(undefined, { sensitivity: 'base' });
 
 	// Search matches the specimen-identity fields a curator scans by: barcode,
@@ -31,13 +39,15 @@
 		const q = search.trim().toLowerCase();
 		let out = specimens;
 		if (country) out = out.filter((s) => s.country === country);
+		if (herbarium) out = out.filter((s) => s.institutionCode === herbarium);
 		if (q) {
 			out = out.filter(
 				(s) =>
 					s.catalogueNumber.toLowerCase().includes(q) ||
 					s.currentDetermination.toLowerCase().includes(q) ||
 					s.recordedBy.toLowerCase().includes(q) ||
-					s.recordNumber.toLowerCase().includes(q)
+					s.recordNumber.toLowerCase().includes(q) ||
+					s.institutionCode.toLowerCase().includes(q)
 			);
 		}
 		return [...out].sort(
@@ -49,6 +59,7 @@
 
 	const coords = (s) => (s.lat != null && s.lng != null ? `${s.lat}, ${s.lng}` : '—');
 	const dash = (v) => v || '—';
+	const institutionName = (code) => INSTITUTION_NAMES[code] || code || '';
 </script>
 
 {#if $taxaStore === null}
@@ -78,6 +89,18 @@
 				{/each}
 			</select>
 		{/if}
+		{#if herbariumOptions.length > 1}
+			<select
+				bind:value={herbarium}
+				class="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+				aria-label="Filter by holding herbarium"
+			>
+				<option value="">All herbaria</option>
+				{#each herbariumOptions as h}
+					<option value={h}>{h}</option>
+				{/each}
+			</select>
+		{/if}
 		<span class="text-sm text-gray-500 dark:text-gray-400">
 			<span class="font-semibold text-gray-800 dark:text-gray-200">{rows.length}</span>
 			of {specimens.length} specimens
@@ -92,6 +115,8 @@
 				<thead class="sticky top-0 bg-gray-100 text-xs uppercase tracking-wide text-gray-500 dark:bg-gray-800 dark:text-gray-400">
 					<tr>
 						<th class="px-3 py-2 font-semibold">Barcode</th>
+						<th class="px-3 py-2 font-semibold">Herbarium</th>
+						<th class="px-3 py-2 font-semibold">Type</th>
 						<th class="px-3 py-2 font-semibold">Determination</th>
 						<th class="px-3 py-2 font-semibold">Family</th>
 						<th class="px-3 py-2 font-semibold">Genus</th>
@@ -113,6 +138,14 @@
 							class="cursor-pointer border-t border-gray-100 odd:bg-white even:bg-gray-50 hover:bg-emerald-50 focus:bg-emerald-50 focus:outline-none dark:border-gray-800 dark:odd:bg-gray-900 dark:even:bg-gray-950 dark:hover:bg-emerald-950/40 dark:focus:bg-emerald-950/40"
 						>
 							<td class="px-3 py-2 font-mono text-xs whitespace-nowrap text-gray-700 dark:text-gray-300">{s.catalogueNumber}</td>
+							<td class="px-3 py-2 whitespace-nowrap text-gray-600 dark:text-gray-400" title={institutionName(s.institutionCode)}>{dash(s.institutionCode)}</td>
+							<td class="px-3 py-2 whitespace-nowrap">
+								{#if s.typeStatus}
+									<span class="rounded bg-emerald-100 px-1.5 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200" title={s.typeStatus}>{s.typeStatus}</span>
+								{:else}
+									<span class="text-gray-400 dark:text-gray-500">—</span>
+								{/if}
+							</td>
 							<td class="font-species px-3 py-2 whitespace-nowrap text-gray-900 dark:text-gray-100">{s.currentDetermination}</td>
 							<td class="px-3 py-2 whitespace-nowrap text-gray-600 dark:text-gray-400">{dash(s.family)}</td>
 							<td class="px-3 py-2 whitespace-nowrap text-gray-600 dark:text-gray-400">{dash(s.genus)}</td>

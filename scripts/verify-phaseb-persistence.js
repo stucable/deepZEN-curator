@@ -71,12 +71,12 @@ assert(
 
 console.log('\n3. Identifications-log serialisation round-trip');
 const entries = [
-	{ catalogueNumber: 'K004152211', scientificName: 'Macaranga alpina', identifier: 'S. Cable', identificationDate: '2024-09-01', remarks: 'plain' },
-	{ catalogueNumber: 'K004152212', scientificName: 'Macaranga cuspidata', identifier: 'J. Razafi', identificationDate: '2025-01-15', remarks: 'corrected, see note "A"' },
-	{ catalogueNumber: 'K004152213', scientificName: 'Macaranga sp.', identifier: '', identificationDate: '', remarks: '' }
+	{ catalogueNumber: 'K004152211', scientificName: 'Macaranga alpina', identifier: 'S. Cable', herbarium: 'K', identificationDate: '2024-09-01', remarks: 'plain' },
+	{ catalogueNumber: 'K004152212', scientificName: 'Macaranga cuspidata', identifier: 'J. Razafi', herbarium: 'TAN', identificationDate: '2025-01-15', remarks: 'corrected, see note "A"' },
+	{ catalogueNumber: 'K004152213', scientificName: 'Macaranga sp.', identifier: '', herbarium: '', identificationDate: '', remarks: '' }
 ];
 eq(parseIdentificationLog(serializeIdentificationLog(entries)), entries,
-	'parse(serialize(entries)) === entries (commas + quotes survive escaping)');
+	'parse(serialize(entries)) === entries (herbarium, commas + quotes survive escaping)');
 
 console.log('\n4. Append text-shaping (append-only, byte-preserving)');
 const base = serializeIdentificationLog([entries[0], entries[1]]);
@@ -92,6 +92,26 @@ const noNewline = serializeIdentificationLog([entries[0]]); // Papa.unparse adds
 assert(!noNewline.endsWith('\n'), 'precondition: serialised log has no trailing newline');
 eq(parseIdentificationLog(appendIdentificationToLog(noNewline, entries[1])), [entries[0], entries[1]],
 	'append inserts a separating newline so rows never merge');
+
+console.log('\n4b. Schema upgrade: appending to an older (pre-Herbarium) log');
+// A 5-column log written before the Herbarium column was added.
+const legacyLog = [
+	'CatalogueNumber,ScientificName,Identifier,IdentificationDate,Remarks',
+	'K004152211,Macaranga alpina,S. Cable,2024-09-01,plain'
+].join('\r\n') + '\r\n';
+const upgraded = appendIdentificationToLog(legacyLog, entries[1]);
+const upgradedEntries = parseIdentificationLog(upgraded);
+eq(upgradedEntries.length, 2, 'migration keeps the legacy row and adds the new one');
+eq(upgradedEntries[0], { ...entries[0], herbarium: '' },
+	'legacy row survives migration with a blank herbarium');
+eq(upgradedEntries[1], entries[1], 'new row keeps its herbarium through the migration');
+assert(upgraded.split(/\r?\n/)[0] === 'CatalogueNumber,ScientificName,Identifier,Herbarium,IdentificationDate,Remarks',
+	'migrated log carries the current header');
+
+console.log('\n5pre. Note-only identification entry (re-affirm current name)');
+const noteOnly = { catalogueNumber: 'K2', scientificName: 'Macaranga cuspidata', identifier: 'S. Cable', herbarium: 'K', identificationDate: '2025-03-01', remarks: 'uncertain — needs checking' };
+eq(parseIdentificationLog(serializeIdentificationLog([noteOnly])), [noteOnly],
+	'a note-only entry round-trips (name unchanged, remarks + herbarium recorded)');
 
 console.log('\n5. Load-time overlay + correction round-trip (step 3b save semantics)');
 const baseCsv = [
@@ -120,18 +140,34 @@ const reparsedAfterReID = parseSpeciesCsv(serializeSpecimensCsv(overlaid.specime
 eq(reparsedAfterReID.specimensByCatalogue.get('K2').taxonomicName, 'Macaranga sp.',
 	'override CSV keeps the original TaxonomicName (currentDetermination lives in the log)');
 
-// (c) A coordinate/collector correction survives serialize → parse.
+// (c) A coordinate/collector/herbarium correction survives serialize → parse.
 const corrected = parseSpeciesCsv(baseCsv).specimensByCatalogue;
 const k1 = corrected.get('K1');
 k1.lat = -19.25;
 k1.lng = 47.9;
 k1.recordedBy = 'Cable & Razafi';
+k1.institutionCode = 'P';
 k1.editedAt = '2025-03-04T10:00:00.000Z';
 const reparsed = parseSpeciesCsv(serializeSpecimensCsv(corrected)).specimensByCatalogue.get('K1');
 eq([reparsed.lat, reparsed.lng], [-19.25, 47.9], 'corrected coordinates persist through the override');
 eq(reparsed.recordedBy, 'Cable & Razafi', 'corrected collector persists');
+eq(reparsed.institutionCode, 'P', 'corrected holding herbarium persists through the override');
 eq(reparsed.editedAt, '2025-03-04T10:00:00.000Z', 'EditedAt stamp persists');
 eq(reparsed.taxonomicName, 'Macaranga alpina', 'untouched determination unchanged by a correction');
+
+console.log('\n6. Holding herbarium (institutionCode) derivation + explicit column');
+// No InstitutionCode column → derived from the barcode prefix (K… = Kew).
+eq(parseSpeciesCsv(baseCsv).specimensByCatalogue.get('K1').institutionCode, 'K',
+	'institutionCode derives from the CatalogueNumber prefix when no column is present');
+// An explicit InstitutionCode column wins over the barcode-prefix derivation.
+const mixedCsv = [
+	'TaxonomicName,CatalogueNumber,InstitutionCode',
+	'Macaranga alpina,P00012345,',            // blank → derive "P"
+	'Macaranga alpina,1234567,TAN'            // numeric barcode → explicit "TAN"
+].join('\r\n');
+const mixed = parseSpeciesCsv(mixedCsv).specimensByCatalogue;
+eq(mixed.get('P00012345').institutionCode, 'P', 'blank InstitutionCode falls back to the barcode prefix');
+eq(mixed.get('1234567').institutionCode, 'TAN', 'explicit InstitutionCode wins (numeric barcode has no prefix)');
 
 console.log(`\n${failures === 0 ? '✅ all checks passed' : `❌ ${failures} check(s) failed`}`);
 process.exit(failures === 0 ? 0 : 1);

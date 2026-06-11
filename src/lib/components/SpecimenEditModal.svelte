@@ -3,7 +3,7 @@
 	import { taxaStore, identificationLogStore } from '$lib/stores/taxa.js';
 	import { folderHandleStore } from '$lib/stores/folder.js';
 	import { currentDatasetStore } from '$lib/stores/dataset.js';
-	import { curatorNameStore } from '$lib/stores/curator.js';
+	import { curatorNameStore, curatorHerbariumStore } from '$lib/stores/curator.js';
 	import { writeSpecimenOverride, appendIdentification } from '$lib/stores/folder.js';
 	import { rebuildView, parseLat, parseLng } from '$lib/utils/csv.js';
 	import HerbariumImage from './HerbariumImage.svelte';
@@ -28,9 +28,13 @@
 	let lat = $state(seed.lat == null ? '' : String(seed.lat));
 	let lng = $state(seed.lng == null ? '' : String(seed.lng));
 	let country = $state(seed.country);
+	let institutionCode = $state(seed.institutionCode); // holding herbarium (the sheet)
 	let recordedBy = $state(seed.recordedBy);
 	let recordNumber = $state(seed.recordNumber);
 	let remarks = $state('');
+	// Herbarium of this identification (the determiner's institution). Seeded from
+	// the curator's saved default; editable per-ID and made sticky again on save.
+	let herbarium = $state(untrack(() => $curatorHerbariumStore));
 
 	let saving = $state(false);
 	let errorMsg = $state(null);
@@ -64,6 +68,12 @@
 		for (const s of $taxaStore.specimensByCatalogue.values()) if (s.country) set.add(s.country);
 		return [...set].sort((a, b) => a.localeCompare(b));
 	});
+	const institutionOptions = $derived.by(() => {
+		if (!$taxaStore) return [];
+		const set = new Set();
+		for (const s of $taxaStore.specimensByCatalogue.values()) if (s.institutionCode) set.add(s.institutionCode);
+		return [...set].sort((a, b) => a.localeCompare(b));
+	});
 
 	// Re-ID history for this barcode, newest first. The append-only log keeps
 	// insertion order, so the last-appended entry is the current determination.
@@ -95,33 +105,44 @@
 		const now = new Date().toISOString();
 
 		const newDet = det.trim();
+		const remarksTrim = remarks.trim();
+		const herbariumTrim = herbarium.trim();
 		const detChanged = newDet !== '' && newDet !== specimen.currentDetermination;
+		// Log an identification when the name changes OR when there's a note to
+		// record against the current name (a re-affirming, note-only entry).
+		const logIdentification = detChanged || remarksTrim !== '';
 		const correctionChanged =
 			latVal !== specimen.lat ||
 			lngVal !== specimen.lng ||
 			country.trim() !== specimen.country ||
+			institutionCode.trim() !== specimen.institutionCode ||
 			recordedBy.trim() !== specimen.recordedBy ||
 			recordNumber.trim() !== specimen.recordNumber;
 
-		if (!detChanged && !correctionChanged) {
+		if (!logIdentification && !correctionChanged) {
 			onClose();
 			return;
 		}
 
 		saving = true;
 		try {
-			// Re-identification → append-only entry in the identifications log.
-			if (detChanged) {
+			// Re-identification (or a note-only re-affirmation) → append-only entry in
+			// the identifications log. A note-only entry keeps the current name.
+			if (logIdentification) {
+				const scientificName = detChanged ? newDet : specimen.currentDetermination;
 				const entry = {
 					catalogueNumber: specimen.catalogueNumber,
-					scientificName: newDet,
+					scientificName,
 					identifier: user,
+					herbarium: herbariumTrim,
 					identificationDate: now,
-					remarks: remarks.trim()
+					remarks: remarksTrim
 				};
 				await appendIdentification(folder, ds, entry, { user });
-				specimen.currentDetermination = newDet;
+				specimen.currentDetermination = scientificName;
 				identificationLogStore.update((list) => [...list, entry]);
+				// Make the typed herbarium the curator's sticky default for next time.
+				if (herbariumTrim) curatorHerbariumStore.set(herbariumTrim);
 			}
 			// Other edits → current-value correction in the specimen override CSV.
 			// TaxonomicName stays the original determination (serializer writes it);
@@ -130,6 +151,7 @@
 				specimen.lat = latVal;
 				specimen.lng = lngVal;
 				specimen.country = country.trim();
+				specimen.institutionCode = institutionCode.trim();
 				specimen.recordedBy = recordedBy.trim();
 				specimen.recordNumber = recordNumber.trim();
 				specimen.editedAt = now;
@@ -177,6 +199,11 @@
 			<div>
 				<p class="font-mono text-xs text-gray-500 dark:text-gray-400">{specimen.catalogueNumber}</p>
 				<p class="font-species text-lg text-gray-900 dark:text-gray-100">{specimen.currentDetermination}</p>
+				{#if specimen.typeStatus}
+					<span class="mt-1 inline-block rounded bg-emerald-100 px-1.5 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200">
+						Type: {specimen.typeStatus}
+					</span>
+				{/if}
 			</div>
 			<button
 				onclick={onClose}
@@ -207,7 +234,7 @@
 							<li class="rounded bg-gray-50 px-2 py-1 dark:bg-gray-800">
 								<span class="font-species text-gray-900 dark:text-gray-100">{h.scientificName}</span>
 								<div class="text-gray-500 dark:text-gray-400">
-									{h.identifier || '—'}{h.identificationDate ? ` · ${h.identificationDate.slice(0, 10)}` : ''}
+									{h.identifier || '—'}{h.herbarium ? ` (${h.herbarium})` : ''}{h.identificationDate ? ` · ${h.identificationDate.slice(0, 10)}` : ''}
 								</div>
 								{#if h.remarks}<div class="text-gray-400 italic">{h.remarks}</div>{/if}
 							</li>
@@ -229,12 +256,18 @@
 					</datalist>
 				</div>
 
-				{#if det.trim() !== specimen.currentDetermination}
-					<div>
-						<label for="edit-remarks" class={labelClass}>ID remarks (optional)</label>
-						<input id="edit-remarks" type="text" bind:value={remarks} placeholder="e.g. det. from flower detail" class={fieldClass} />
-					</div>
-				{/if}
+				<div>
+					<label for="edit-herbarium" class={labelClass}>Determiner's herbarium</label>
+					<input id="edit-herbarium" type="text" bind:value={herbarium} placeholder="e.g. K" class={fieldClass} />
+				</div>
+
+				<div>
+					<label for="edit-remarks" class={labelClass}>ID remarks / notes (optional)</label>
+					<input id="edit-remarks" type="text" bind:value={remarks} placeholder="e.g. det. from flower detail, or 'uncertain — needs checking'" class={fieldClass} />
+					<p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+						A note on its own is saved as a dated identification on the current name.
+					</p>
+				</div>
 
 				<div class="grid grid-cols-2 gap-3">
 					<div>
@@ -263,6 +296,17 @@
 					<datalist id="country-options">
 						{#each countryOptions as c}<option value={c}></option>{/each}
 					</datalist>
+				</div>
+
+				<div>
+					<label for="edit-institution" class={labelClass}>Holding herbarium</label>
+					<input id="edit-institution" type="text" list="institution-options" bind:value={institutionCode} placeholder="e.g. K" class={fieldClass} />
+					<datalist id="institution-options">
+						{#each institutionOptions as h}<option value={h}></option>{/each}
+					</datalist>
+					<p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+						Institution holding the sheet — defaults from the barcode prefix.
+					</p>
 				</div>
 
 				<div>

@@ -93,6 +93,20 @@ function splitImageFiles(raw) {
 	return [...new Set(raw.split(';').map((s) => s.trim()).filter(Boolean))];
 }
 
+/** Known herbarium codes → display names, for tooltips. Storage uses the code. */
+export const INSTITUTION_NAMES = { K: 'Kew', P: 'Paris', TAN: 'Antananarivo (TAN)' };
+
+/**
+ * Derives the holding herbarium's institution code from a barcode (CatalogueNumber).
+ * Specimen barcodes lead with the institution code — `K004152003` → `K`,
+ * `P00012345` → `P`. Returns '' when there's no leading alphabetic prefix (e.g. a
+ * purely numeric accession), in which case an explicit InstitutionCode column or a
+ * manual edit supplies it instead.
+ */
+export function deriveInstitutionCode(catalogueNumber) {
+	return String(catalogueNumber ?? '').match(/^[A-Za-z]+/)?.[0]?.toUpperCase() ?? '';
+}
+
 /**
  * True for a determination that hasn't been resolved to a species — a bare genus
  * or one carrying the explicit "sp." rank marker (e.g. "Macaranga sp."). These
@@ -376,7 +390,8 @@ export function parseSpeciesCsv(text) {
 			recordNumber: row.RecordNumber?.trim() || '',
 			collectionDate: row.CollectionDate?.trim() || '',
 			country: row.Country?.trim() || '',
-			editedAt: row.EditedAt?.trim() || '',
+			institutionCode: row.InstitutionCode?.trim() || deriveInstitutionCode(catalogueNumber),
+				editedAt: row.EditedAt?.trim() || '',
 			// Lossless passthrough: never read by the species view / filters / map,
 			// but retained on the specimen so the curation override CSV can be
 			// written back without shedding columns (Phase B). Deliberately kept off
@@ -420,7 +435,7 @@ const OVERRIDE_COLUMNS = [
 	'TaxonomicName', 'CatalogueNumber', 'Clade', 'Order', 'Family', 'Genus',
 	'FullName', 'VernacularName', 'TypeStatus', 'TypeName',
 	'DecimalLatitude', 'DecimalLongitude', 'Locality', 'RecordedBy',
-	'RecordNumber', 'CollectionDate', 'Country',
+	'RecordNumber', 'CollectionDate', 'Country', 'InstitutionCode',
 	'ImageFile', 'Habit', 'LeafArrangement', 'LeafForm', 'LeafVenation',
 	'LeafMargin', 'Stipules', 'Exudate', 'StemArmature', 'Tendrils', 'EditedAt'
 ];
@@ -460,6 +475,7 @@ export function serializeSpecimensCsv(specimensByCatalogue) {
 			RecordNumber: s.recordNumber,
 			CollectionDate: s.collectionDate,
 			Country: s.country,
+			InstitutionCode: s.institutionCode,
 			ImageFile: s.imageFiles.join('; '),
 			Habit: s.traits.habit.join(';'),
 			LeafArrangement: s.traits.leafArrangement,
@@ -478,12 +494,14 @@ export function serializeSpecimensCsv(specimensByCatalogue) {
 
 /**
  * Parses an append-only identifications-log CSV into entries. Columns follow
- * Darwin Core: CatalogueNumber, ScientificName, Identifier, IdentificationDate,
- * Remarks. Rows missing a barcode or a name are skipped (they can't re-identify
- * a specimen). Pure — discovery of the log file in the image folder is the
- * persistence layer's job (a later Phase B increment).
+ * Darwin Core: CatalogueNumber, ScientificName, Identifier, Herbarium,
+ * IdentificationDate, Remarks. `Herbarium` is the determiner's institution
+ * (e.g. "K"); it reads as blank from older 5-column logs that predate it, so
+ * parsing stays backward-compatible. Rows missing a barcode or a name are
+ * skipped (they can't re-identify a specimen). Pure — discovery of the log file
+ * in the image folder is the persistence layer's job.
  * @param {string} text - raw CSV text
- * @returns {Array<{catalogueNumber: string, scientificName: string, identifier: string, identificationDate: string, remarks: string}>}
+ * @returns {Array<{catalogueNumber: string, scientificName: string, identifier: string, herbarium: string, identificationDate: string, remarks: string}>}
  */
 export function parseIdentificationLog(text) {
 	const { data } = Papa.parse(text, {
@@ -500,6 +518,7 @@ export function parseIdentificationLog(text) {
 			catalogueNumber,
 			scientificName,
 			identifier: row.Identifier?.trim() || '',
+			herbarium: row.Herbarium?.trim() || '',
 			identificationDate: row.IdentificationDate?.trim() || '',
 			remarks: row.Remarks?.trim() || ''
 		});
@@ -509,11 +528,14 @@ export function parseIdentificationLog(text) {
 
 /** Fixed column order for the identifications log — the inverse of parseIdentificationLog. */
 const IDENTIFICATION_LOG_FIELDS = [
-	'CatalogueNumber', 'ScientificName', 'Identifier', 'IdentificationDate', 'Remarks'
+	'CatalogueNumber', 'ScientificName', 'Identifier', 'Herbarium', 'IdentificationDate', 'Remarks'
 ];
 
+/** The header line a freshly-written log carries; used to spot an older-schema log on append. */
+const IDENTIFICATION_LOG_HEADER = IDENTIFICATION_LOG_FIELDS.join(',');
+
 const identificationEntryToValues = (e) => [
-	e.catalogueNumber, e.scientificName, e.identifier ?? '', e.identificationDate ?? '', e.remarks ?? ''
+	e.catalogueNumber, e.scientificName, e.identifier ?? '', e.herbarium ?? '', e.identificationDate ?? '', e.remarks ?? ''
 ];
 
 /**
@@ -545,6 +567,13 @@ export function serializeIdentificationRow(entry) {
  * prior content verbatim (a normalising newline is added only if missing) and
  * gains one headerless row; an empty/absent log is created with a header. Pure —
  * folder.js wraps this with the file read/write.
+ *
+ * Exception — schema upgrade: if the existing log's header predates a column
+ * (e.g. a 5-column log written before `Herbarium`), a byte-appended row would
+ * misalign against the new column order. In that one case the log is re-parsed
+ * and rewritten with the current schema (older rows gain blank values for the
+ * new column). Still append-only in meaning — no entries are dropped or
+ * reordered — just not byte-preserving for that first post-upgrade write.
  * @param {string} existingText - current log text ('' if the file doesn't exist)
  * @param {object} entry
  * @returns {string} the full text to write back
@@ -552,6 +581,13 @@ export function serializeIdentificationRow(entry) {
 export function appendIdentificationToLog(existingText, entry) {
 	if (!existingText || existingText.trim() === '') {
 		return serializeIdentificationLog([entry]) + '\r\n';
+	}
+	// Older-schema log (header doesn't match the current columns) → migrate by
+	// re-serialising every entry under the current schema, then add the new one.
+	const headerLine = existingText.slice(0, existingText.search(/\r?\n|$/)).trim().replace(/^﻿/, '');
+	if (headerLine !== IDENTIFICATION_LOG_HEADER) {
+		// Rewritten body is CRLF (Papa.unparse default), so terminate it the same way.
+		return serializeIdentificationLog([...parseIdentificationLog(existingText), entry]) + '\r\n';
 	}
 	// Match the existing file's newline. PapaParse emits (and, on parse, expects)
 	// CRLF by default, and treats a lone LF as in-field data when the document is

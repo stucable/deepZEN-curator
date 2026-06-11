@@ -6,6 +6,22 @@ import { pointInRing } from '$lib/utils/geo.js';
 export const taxaStore = writable(null);
 
 /**
+ * Map of image-file basename → that specimen's type status (e.g. "holotype"),
+ * for every type specimen in the dataset. Lets the browse grid badge the exact
+ * thumbnail that is a type. Specimen-level + derived separately from the species
+ * view, so it doesn't touch buildSpeciesView (or its parity guarantees).
+ */
+export const typeStatusByImageFile = derived(taxaStore, ($taxa) => {
+	const map = new Map();
+	if (!$taxa) return map;
+	for (const s of $taxa.specimensByCatalogue.values()) {
+		if (!s.typeStatus) continue;
+		for (const file of s.imageFiles) map.set(file, s.typeStatus);
+	}
+	return map;
+});
+
+/**
  * Parsed identifications-log entries for the active dataset (the append-only
  * re-ID history overlaid on the base CSV at load). Empty array when no log file
  * is present. The curation edit modal reads this to show a specimen's ID history
