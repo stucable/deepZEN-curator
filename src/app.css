@@ -6,4 +6,10 @@
 	.font-species {
 		font-family: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
 	}
+
+	/* Slimmer native scrollbar for the app's scrolling panels (sidebars).
+	   Chrome-only target, so the standard scrollbar-width is sufficient. */
+	.thin-scrollbar {
+		scrollbar-width: thin;
+	}
 }

@@ -7,7 +7,8 @@
 		projectedExtent,
 		projectLngLat,
 		unprojectXY,
-		inBbox
+		inBbox,
+		pointInRing
 	} from '$lib/utils/geo.js';
 	import { MADAGASCAR_OUTLINE } from '$lib/data/madagascar.js';
 	import { colourForIndex, PALETTE_SIZE } from '$lib/utils/palette.js';
@@ -50,11 +51,20 @@
 		)
 		.join(' ');
 
+	// Split a taxon name at an infraspecific rank ("var." / "subsp." / "ssp.") so the
+	// legend can force a line break before it: line 1 = binomial, line 2 = the rank +
+	// epithet (+ count). `infra` is '' for a plain binomial, which stays on one line.
+	function splitInfra(name) {
+		const m = name.match(/\s(?:var\.|subsp\.|ssp\.)\s/);
+		if (!m) return { primary: name, infra: '' };
+		return { primary: name.slice(0, m.index), infra: name.slice(m.index + 1) };
+	}
+
 	// Plot data: which species are visible (after sidebar + polygon filters), the
 	// colour assigned to each, the projected points, and how many fell off-map.
 	const plot = $derived.by(() => {
 		if (!$taxaStore)
-			return { points: [], byCat: new Map(), legend: [], offMap: 0, tooMany: false, speciesCount: 0 };
+			return { points: [], byCat: new Map(), legend: [], offMap: 0, tooMany: false, speciesCount: 0, missing: [] };
 
 		const filterKeys = new Set($filteredSpecies.map((s) => s.taxonomicName));
 
@@ -82,6 +92,31 @@
 		const determinedKeys = orderedKeys.filter((k) => !isUndetermined(k));
 		const undetKeys = orderedKeys.filter((k) => isUndetermined(k));
 
+		// Per-species "(mapped / total)" tallies for the legend.
+		//  total — every barcoded specimen of the species in the dataset (skips the
+		//          barcode-less name placeholders, matching the geolocatedSpecimens basis).
+		//  mapped — specimens shown on the map: in-bbox plotted points normally, or, when a
+		//           region polygon is drawn, only the specimens inside it (per-point test).
+		//           The dataset total is unaffected by the polygon.
+		const totalByKey = new Map();
+		for (const s of $taxaStore.specimensByCatalogue.values()) {
+			if (!s.catalogueNumber) continue;
+			totalByKey.set(s.currentDetermination, (totalByKey.get(s.currentDetermination) ?? 0) + 1);
+		}
+		const polygon = $selectionPolygonStore;
+		const mappedByKey = new Map();
+		if (polygon && polygon.length >= 3) {
+			for (const s of $taxaStore.geolocatedSpecimens) {
+				if (!pointInRing(s.lng, s.lat, polygon)) continue;
+				mappedByKey.set(s.currentDetermination, (mappedByKey.get(s.currentDetermination) ?? 0) + 1);
+			}
+		} else {
+			for (const s of inView) {
+				mappedByKey.set(s.currentDetermination, (mappedByKey.get(s.currentDetermination) ?? 0) + 1);
+			}
+		}
+		const tally = (k) => ({ mapped: mappedByKey.get(k) ?? 0, total: totalByKey.get(k) ?? 0 });
+
 		const tooMany = determinedKeys.length > PALETTE_SIZE;
 		const colourByKey = new Map();
 		determinedKeys.forEach((k, i) =>
@@ -103,11 +138,20 @@
 		const legend = tooMany
 			? []
 			: [
-					...determinedKeys.map((k) => ({ name: k, colour: colourByKey.get(k), undetermined: false })),
-					...undetKeys.map((k) => ({ name: k, colour: UNDETERMINED_COLOUR, undetermined: true }))
+					...determinedKeys.map((k) => ({ name: k, colour: colourByKey.get(k), undetermined: false, ...tally(k) })),
+					...undetKeys.map((k) => ({ name: k, colour: UNDETERMINED_COLOUR, undetermined: true, ...tally(k) }))
 				];
 
-		return { points, byCat, legend, offMap, tooMany, speciesCount: determinedKeys.length };
+		// Filtered species with no plottable point — either un-georeferenced or with
+		// coordinates that fell off-map. Listed in the legend's "Without coordinates"
+		// section (in the filtered sort order) so the map's species count reconciles
+		// with the sidebar's filtered count.
+		const missing = $filteredSpecies
+			.map((s) => s.taxonomicName)
+			.filter((k) => !present.has(k))
+			.map((k) => ({ name: k, undetermined: isUndetermined(k), ...tally(k) }));
+
+		return { points, byCat, legend, offMap, tooMany, speciesCount: determinedKeys.length, missing };
 	});
 
 	// ---- Legend selection (map-only show/hide) -------------------------------
@@ -726,48 +770,94 @@
 			{/if}
 		</div>
 
-		<!-- Legend (click a species to show/hide its points on the map) -->
-		{#if plot.legend.length > 0}
+		<!-- Legend (click a mapped species to show/hide its points) + a list of
+		     filtered species that have no point on the map. -->
+		{#if plot.legend.length > 0 || plot.tooMany || plot.missing.length > 0}
 			<div
-				class="flex w-56 shrink-0 flex-col rounded-lg border border-gray-200 p-3 text-xs dark:border-gray-700"
+				class="flex w-72 shrink-0 flex-col rounded-lg border border-gray-200 p-3 text-xs dark:border-gray-700"
 			>
-				<div class="mb-2 flex items-center justify-between">
-					<h3 class="font-semibold uppercase text-gray-500 dark:text-gray-400">Species</h3>
-					<button
-						type="button"
-						onclick={allHidden ? showAllSpecies : hideAllSpecies}
-						class="cursor-pointer text-emerald-700 hover:underline dark:text-emerald-400"
-					>
-						{allHidden ? 'Show all' : 'Hide all'}
-					</button>
+				{#if plot.legend.length > 0}
+					<div class="mb-2 flex shrink-0 items-center justify-between">
+						<h3 class="font-semibold uppercase text-gray-500 dark:text-gray-400">
+							Species ({plot.speciesCount})
+						</h3>
+						<button
+							type="button"
+							onclick={allHidden ? showAllSpecies : hideAllSpecies}
+							class="cursor-pointer text-emerald-700 hover:underline dark:text-emerald-400"
+						>
+							{allHidden ? 'Show all' : 'Hide all'}
+						</button>
+					</div>
+				{/if}
+
+				<div class="thin-scrollbar flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+					{#if plot.legend.length > 0}
+						<ul class="flex flex-col gap-1">
+							{#each plot.legend as item (item.name)}
+								{@const hidden = hiddenSpecies.has(item.name)}
+								{@const parts = splitInfra(item.name)}
+								<li>
+									<button
+										type="button"
+										onclick={() => toggleSpecies(item.name)}
+										aria-pressed={!hidden}
+										title={hidden ? 'Show on map' : 'Hide from map'}
+										class="flex w-full cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-left hover:bg-gray-100 dark:hover:bg-gray-800 {hidden ? 'opacity-40' : ''}"
+									>
+										<span
+											class="inline-block size-3 shrink-0 rounded-full border border-gray-700"
+											style:background-color={item.colour}
+										></span>
+										<span class="text-sm text-gray-800 dark:text-gray-200">
+											{#if parts.infra}
+												<span class="block whitespace-nowrap">{parts.primary}</span>
+												<span class="block whitespace-nowrap">{parts.infra} <span class="text-gray-400 dark:text-gray-500">({item.mapped}/{item.total})</span></span>
+											{:else}
+												<span class="whitespace-nowrap">{parts.primary} <span class="text-gray-400 dark:text-gray-500">({item.mapped}/{item.total})</span></span>
+											{/if}
+										</span>
+									</button>
+								</li>
+							{/each}
+						</ul>
+					{:else if plot.tooMany}
+						<p class="text-gray-500 dark:text-gray-400">
+							{plot.speciesCount} species shown — too many to colour-code. Filter to {PALETTE_SIZE} or
+							fewer species (sidebar) to see distinct colours and a legend.
+						</p>
+					{/if}
+
+					{#if plot.missing.length > 0}
+						<div
+							class={plot.legend.length > 0 || plot.tooMany
+								? 'border-t border-gray-200 pt-3 dark:border-gray-700'
+								: ''}
+						>
+							<h3 class="mb-2 font-semibold uppercase text-gray-500 dark:text-gray-400">
+								Without coordinates ({plot.missing.length})
+							</h3>
+							<ul class="flex flex-col gap-1">
+								{#each plot.missing as item (item.name)}
+									{@const parts = splitInfra(item.name)}
+									<li class="flex items-center gap-2 px-1 py-0.5">
+										<span
+											class="inline-block size-[11px] shrink-0 rounded-full border border-gray-400 dark:border-gray-500"
+										></span>
+										<span class="text-sm text-gray-500 dark:text-gray-400">
+											{#if parts.infra}
+												<span class="block whitespace-nowrap">{parts.primary}</span>
+												<span class="block whitespace-nowrap">{parts.infra} <span class="text-gray-400 dark:text-gray-500">({item.mapped}/{item.total})</span></span>
+											{:else}
+												<span class="whitespace-nowrap">{parts.primary} <span class="text-gray-400 dark:text-gray-500">({item.mapped}/{item.total})</span></span>
+											{/if}
+										</span>
+									</li>
+								{/each}
+							</ul>
+						</div>
+					{/if}
 				</div>
-				<ul class="flex flex-col gap-1 overflow-y-auto">
-					{#each plot.legend as item (item.name)}
-						{@const hidden = hiddenSpecies.has(item.name)}
-						<li>
-							<button
-								type="button"
-								onclick={() => toggleSpecies(item.name)}
-								aria-pressed={!hidden}
-								title={hidden ? 'Show on map' : 'Hide from map'}
-								class="flex w-full cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-left hover:bg-gray-100 dark:hover:bg-gray-800 {hidden ? 'opacity-40' : ''}"
-							>
-								<span
-									class="inline-block size-3 shrink-0 rounded-full border border-gray-700"
-									style:background-color={item.colour}
-								></span>
-								<span class="text-sm text-gray-800 dark:text-gray-200">
-									{item.name}{item.undetermined ? ' (indet.)' : ''}
-								</span>
-							</button>
-						</li>
-					{/each}
-				</ul>
-			</div>
-		{:else if plot.tooMany}
-			<div class="w-56 shrink-0 rounded-lg border border-gray-200 p-3 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">
-				{plot.speciesCount} species shown — too many to colour-code. Filter to {PALETTE_SIZE} or fewer
-				species (sidebar) to see distinct colours and a legend.
 			</div>
 		{/if}
 	</div>

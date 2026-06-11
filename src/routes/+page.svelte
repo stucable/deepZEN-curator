@@ -190,7 +190,7 @@
 </script>
 
 <div class="flex h-screen overflow-hidden bg-white dark:bg-gray-950">
-	<aside class="w-65 shrink-0 overflow-y-auto border-r border-l-2 border-gray-200 border-l-emerald-600 bg-gray-50 p-4 dark:border-gray-700 dark:border-l-emerald-600 dark:bg-gray-900">
+	<aside class="thin-scrollbar w-65 shrink-0 overflow-y-auto border-r border-l-2 border-gray-200 border-l-emerald-600 bg-gray-50 p-4 dark:border-gray-700 dark:border-l-emerald-600 dark:bg-gray-900">
 		<Sidebar />
 	</aside>
 
