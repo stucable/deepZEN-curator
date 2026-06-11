@@ -1,5 +1,5 @@
 <script>
-	import { taxaStore, taxaSourceStore, taxaSourceFilenameStore, csvLoadErrorStore, filterStore, determinedSpeciesCount, filteredSpeciesCounts, availableFamilies, availableGenera, vernacularOptions, filterOptionCounts, DEFAULT_HABITS } from '$lib/stores/taxa.js';
+	import { taxaStore, taxaSourceStore, taxaSourceFilenameStore, csvLoadErrorStore, filterStore, determinedSpeciesCount, filteredSpeciesCounts, unidentifiedSpecimenCount, availableFamilies, availableGenera, vernacularOptions, filterOptionCounts, DEFAULT_HABITS } from '$lib/stores/taxa.js';
 	import { folderHandleStore, pendingFolderHandleStore, selectFolder, reconnectFolder } from '$lib/stores/folder.js';
 	import { currentDatasetStore } from '$lib/stores/dataset.js';
 	import { viewModeStore } from '$lib/stores/view.js';
@@ -523,13 +523,16 @@
 
 	<hr class="border-gray-200 dark:border-gray-700" />
 
-	<!-- Species count (determined only; the "Genus sp." to-identify pile is tallied separately) -->
+	<!-- Species count (determined only) + a separate line tallying the individual
+	     undetermined specimens (sheets) in the "Genus sp." to-identify pile. -->
 	<p class="text-sm text-gray-500 dark:text-gray-400">
 		Showing <span class="font-semibold text-gray-800 dark:text-gray-200">{$filteredSpeciesCounts.determined}</span>
 		of {$determinedSpeciesCount} species
-		{#if $filteredSpeciesCounts.undetermined > 0}
-			<span class="text-gray-400 dark:text-gray-500">· {$filteredSpeciesCounts.undetermined} to identify</span>
-		{/if}
 	</p>
+	{#if $unidentifiedSpecimenCount > 0}
+		<p class="text-sm text-gray-400 dark:text-gray-500">
+			and {$unidentifiedSpecimenCount} unidentified specimen{$unidentifiedSpecimenCount === 1 ? '' : 's'}
+		</p>
+	{/if}
 	{/if}
 </div>

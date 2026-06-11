@@ -279,6 +279,39 @@ export const filteredSpeciesCounts = derived(filteredSpecies, ($fs) => {
 });
 
 /**
+ * Derived: count of individual undetermined specimens (barcoded sheets in the
+ * "Genus sp." to-identify pile) currently in view — not the number of "Genus sp."
+ * groups. Powers the sidebar footer's "and N unidentified specimens" line. The
+ * in-view undetermined *species* come from `filteredSpecies` (which already applies
+ * the sidebar filters + in-region species gate); for each, specimens are counted at
+ * the specimen level, honouring the region polygon the same way the Curate table does
+ * (inside the polygon, or — when includeUnlocatedStore is on — no-coordinate ones).
+ */
+export const unidentifiedSpecimenCount = derived(
+	[taxaStore, filteredSpecies, selectionPolygonStore, includeUnlocatedStore],
+	([$taxa, $filtered, $polygon, $inc]) => {
+		if (!$taxa) return 0;
+		const undet = new Set(
+			$filtered.filter((s) => isUndetermined(s.taxonomicName)).map((s) => s.taxonomicName)
+		);
+		if (undet.size === 0) return 0;
+		const hasPoly = $polygon && $polygon.length >= 3;
+		let n = 0;
+		for (const s of $taxa.specimensByCatalogue.values()) {
+			if (!s.catalogueNumber) continue;
+			if (!undet.has(s.currentDetermination)) continue;
+			if (hasPoly) {
+				const inPoly = s.lat != null && s.lng != null && pointInRing(s.lng, s.lat, $polygon);
+				const noCoords = s.lat == null || s.lng == null;
+				if (!(inPoly || ($inc && noCoords))) continue;
+			}
+			n++;
+		}
+		return n;
+	}
+);
+
+/**
  * Derived: sorted, de-duplicated list of non-empty vernacular names in the
  * current dataset. Powers the sidebar's <datalist> typeahead.
  */
