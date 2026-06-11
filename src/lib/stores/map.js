@@ -11,6 +11,14 @@ import { writable } from 'svelte/store';
  */
 export const selectionPolygonStore = writable(null);
 
+/**
+ * When a region polygon is active, whether the Browse grid also shows images of
+ * specimens that have no coordinates (they may occur in the region, unconfirmed).
+ * Drives `browseSpecies` in stores/taxa.js — no effect when no polygon is drawn.
+ * Default on; session-only, like `selectionPolygonStore`.
+ */
+export const includeUnlocatedStore = writable(true);
+
 export function clearSelection() {
 	selectionPolygonStore.set(null);
 }

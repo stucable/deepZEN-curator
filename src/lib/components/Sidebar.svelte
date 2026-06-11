@@ -1,8 +1,9 @@
 <script>
-	import { taxaStore, taxaSourceStore, taxaSourceFilenameStore, csvLoadErrorStore, filterStore, determinedSpeciesCount, filteredSpeciesCounts, availableFamilies, availableGenera, vernacularOptions, filterOptionCounts, DEFAULT_HABITS } from '$lib/stores/taxa.js';
+	import { taxaStore, taxaSourceStore, taxaSourceFilenameStore, csvLoadErrorStore, filterStore, determinedSpeciesCount, filteredSpeciesCounts, unidentifiedSpecimenCount, availableFamilies, availableGenera, vernacularOptions, filterOptionCounts, DEFAULT_HABITS } from '$lib/stores/taxa.js';
 	import { folderHandleStore, pendingFolderHandleStore, selectFolder, reconnectFolder } from '$lib/stores/folder.js';
 	import { currentDatasetStore } from '$lib/stores/dataset.js';
 	import { viewModeStore } from '$lib/stores/view.js';
+	import { selectionPolygonStore, includeUnlocatedStore, clearSelection } from '$lib/stores/map.js';
 	import { curatorNameStore, curatorHerbariumStore } from '$lib/stores/curator.js';
 	import { VERSION } from '$lib/version.js';
 	import DatasetSelector from './DatasetSelector.svelte';
@@ -185,6 +186,36 @@
 	<div>
 		<h2 class="mb-1 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Sort by</h2>
 		<SortPills />
+	</div>
+	{/if}
+
+	<!-- Region (map polygon) — narrows the Browse grid's images and the Curate
+	     specimen list to the selected area. Shown in those two views; in Map mode the
+	     toolbar's own "Clear region filter" applies. -->
+	{#if ($viewModeStore === 'browse' || $viewModeStore === 'curate') && $selectionPolygonStore}
+	<hr class="border-gray-200 dark:border-gray-700" />
+
+	<div>
+		<h2 class="mb-1 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Region</h2>
+		<div class="rounded border border-amber-300 bg-amber-50 px-2.5 py-2 dark:border-amber-700 dark:bg-amber-950">
+			<p class="text-xs text-amber-800 dark:text-amber-200">
+				Showing {$viewModeStore === 'curate' ? 'specimens' : 'specimen images'} inside the selected map region.
+			</p>
+			<label class="mt-2 flex cursor-pointer items-center gap-2 text-xs text-amber-800 dark:text-amber-200">
+				<input
+					type="checkbox"
+					bind:checked={$includeUnlocatedStore}
+					class="size-3.5 cursor-pointer accent-emerald-600"
+				/>
+				Include specimens without coordinates
+			</label>
+			<button
+				onclick={clearSelection}
+				class="mt-2 w-full cursor-pointer rounded border border-amber-500 px-3 py-1 text-xs font-medium text-amber-700 hover:bg-amber-100 dark:text-amber-300 dark:hover:bg-amber-900"
+			>
+				Clear region
+			</button>
+		</div>
 	</div>
 	{/if}
 
@@ -492,13 +523,16 @@
 
 	<hr class="border-gray-200 dark:border-gray-700" />
 
-	<!-- Species count (determined only; the "Genus sp." to-identify pile is tallied separately) -->
+	<!-- Species count (determined only) + a separate line tallying the individual
+	     undetermined specimens (sheets) in the "Genus sp." to-identify pile. -->
 	<p class="text-sm text-gray-500 dark:text-gray-400">
 		Showing <span class="font-semibold text-gray-800 dark:text-gray-200">{$filteredSpeciesCounts.determined}</span>
 		of {$determinedSpeciesCount} species
-		{#if $filteredSpeciesCounts.undetermined > 0}
-			<span class="text-gray-400 dark:text-gray-500">· {$filteredSpeciesCounts.undetermined} to identify</span>
-		{/if}
 	</p>
+	{#if $unidentifiedSpecimenCount > 0}
+		<p class="text-sm text-gray-400 dark:text-gray-500">
+			and {$unidentifiedSpecimenCount} unidentified specimen{$unidentifiedSpecimenCount === 1 ? '' : 's'}
+		</p>
+	{/if}
 	{/if}
 </div>

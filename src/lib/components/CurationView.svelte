@@ -1,5 +1,7 @@
 <script>
-	import { taxaStore } from '$lib/stores/taxa.js';
+	import { taxaStore, regionSpeciesKeys } from '$lib/stores/taxa.js';
+	import { selectionPolygonStore, includeUnlocatedStore } from '$lib/stores/map.js';
+	import { pointInRing } from '$lib/utils/geo.js';
 	import { INSTITUTION_NAMES } from '$lib/utils/csv.js';
 	import SpecimenEditModal from './SpecimenEditModal.svelte';
 
@@ -40,6 +42,21 @@
 		let out = specimens;
 		if (country) out = out.filter((s) => s.country === country);
 		if (herbarium) out = out.filter((s) => s.institutionCode === herbarium);
+		// Region polygon (drawn in Map mode): keep specimens inside it, plus — when
+		// includeUnlocatedStore is on (default) — no-coordinate specimens *of species that
+		// occur in the region*. The species gate (regionSpeciesKeys) mirrors the Browse
+		// grid, so the Images and Curate views show the same species under a region; without
+		// it, every no-coordinate specimen of every species would leak in.
+		const polygon = $selectionPolygonStore;
+		if (polygon && polygon.length >= 3) {
+			const includeUnlocated = $includeUnlocatedStore;
+			const keys = $regionSpeciesKeys;
+			out = out.filter((s) =>
+				s.lat != null && s.lng != null
+					? pointInRing(s.lng, s.lat, polygon)
+					: includeUnlocated && !!keys?.has(s.currentDetermination)
+			);
+		}
 		if (q) {
 			out = out.filter(
 				(s) =>

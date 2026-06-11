@@ -1,5 +1,5 @@
 import { writable, derived } from 'svelte/store';
-import { selectionPolygonStore } from './map.js';
+import { selectionPolygonStore, includeUnlocatedStore } from './map.js';
 import { pointInRing } from '$lib/utils/geo.js';
 import { isUndetermined } from '$lib/utils/csv.js';
 
@@ -18,6 +18,23 @@ export const typeStatusByImageFile = derived(taxaStore, ($taxa) => {
 	for (const s of $taxa.specimensByCatalogue.values()) {
 		if (!s.typeStatus) continue;
 		for (const file of s.imageFiles) map.set(file, s.typeStatus);
+	}
+	return map;
+});
+
+/**
+ * Map of image-file basename → that specimen's { lat, lng }, for every image of a
+ * georeferenced specimen. Powers the region-polygon image filter (browseSpecies):
+ * a file's absence from this map means its specimen has no coordinates. Built like
+ * typeStatusByImageFile — specimen-level, separate from the species view. Specimens
+ * with a null lat or lng are deliberately skipped (absence == "no coordinates").
+ */
+export const imageFileLatLng = derived(taxaStore, ($taxa) => {
+	const map = new Map();
+	if (!$taxa) return map;
+	for (const s of $taxa.specimensByCatalogue.values()) {
+		if (s.lat == null || s.lng == null) continue;
+		for (const file of s.imageFiles) map.set(file, { lat: s.lat, lng: s.lng });
 	}
 	return map;
 });
@@ -155,6 +172,18 @@ function speciesKeysInPolygon($taxa, polygon) {
 }
 
 /**
+ * Derived: the set of species (currentDetermination keys) that have at least one
+ * geolocated specimen inside the drawn region polygon, or null when no polygon is
+ * active. The single definition of "which species occur in the region" — consumed by
+ * `filteredSpecies` (so the Browse grid + map narrow to it) and by the Curate view (to
+ * gate which no-coordinate specimens it shows), keeping the two views in lock-step.
+ */
+export const regionSpeciesKeys = derived(
+	[taxaStore, selectionPolygonStore],
+	([$taxa, $polygon]) => ($taxa ? speciesKeysInPolygon($taxa, $polygon) : null)
+);
+
+/**
  * Derived: species array filtered by current filter selection, sorted per the
  * active `sortStore` mode. Sources from one of three pre-sorted arrays built
  * at parse time; Array.filter preserves order so no runtime sort is needed.
@@ -166,8 +195,8 @@ function speciesKeysInPolygon($taxa, polygon) {
  * the dropdown "(N)" labels keep counting only the dropdown filters.
  */
 export const filteredSpecies = derived(
-	[taxaStore, filterStore, sortStore, selectionPolygonStore],
-	([$taxa, $filter, $sort, $polygon]) => {
+	[taxaStore, filterStore, sortStore, regionSpeciesKeys],
+	([$taxa, $filter, $sort, $regionKeys]) => {
 		if (!$taxa) return [];
 
 		const source =
@@ -183,9 +212,36 @@ export const filteredSpecies = derived(
 			result = result.filter((s) => tokens.every((t) => s.searchText.includes(t)));
 		}
 
-		const inPolygon = speciesKeysInPolygon($taxa, $polygon);
-		if (!inPolygon) return result;
-		return result.filter((s) => inPolygon.has(s.taxonomicName));
+		if (!$regionKeys) return result;
+		return result.filter((s) => $regionKeys.has(s.taxonomicName));
+	}
+);
+
+/**
+ * Derived: the species the Browse grid renders. Identical to `filteredSpecies`
+ * unless a region polygon is active, in which case each species is cloned with its
+ * `images` narrowed to the specimen sheets whose coordinates fall inside the polygon
+ * — plus, when `includeUnlocatedStore` is on (default), images of specimens that have
+ * no coordinates at all. Species left with no images are dropped, so empty cards never
+ * render. Kept separate from `filteredSpecies` on purpose: the map and the sidebar
+ * species count read `filteredSpecies` and must stay at species-occurrence granularity
+ * (a species with an in-region but imageless specimen still maps and still counts), so
+ * only the grid applies this image-level narrowing.
+ */
+export const browseSpecies = derived(
+	[filteredSpecies, selectionPolygonStore, includeUnlocatedStore, imageFileLatLng],
+	([$filtered, $polygon, $includeUnlocated, $latLng]) => {
+		if (!$polygon || $polygon.length < 3) return $filtered;
+
+		const out = [];
+		for (const s of $filtered) {
+			const images = s.images.filter((file) => {
+				const ll = $latLng.get(file);
+				return ll ? pointInRing(ll.lng, ll.lat, $polygon) : $includeUnlocated;
+			});
+			if (images.length) out.push({ ...s, images });
+		}
+		return out;
 	}
 );
 
@@ -221,6 +277,39 @@ export const filteredSpeciesCounts = derived(filteredSpecies, ($fs) => {
 	}
 	return { determined, undetermined };
 });
+
+/**
+ * Derived: count of individual undetermined specimens (barcoded sheets in the
+ * "Genus sp." to-identify pile) currently in view — not the number of "Genus sp."
+ * groups. Powers the sidebar footer's "and N unidentified specimens" line. The
+ * in-view undetermined *species* come from `filteredSpecies` (which already applies
+ * the sidebar filters + in-region species gate); for each, specimens are counted at
+ * the specimen level, honouring the region polygon the same way the Curate table does
+ * (inside the polygon, or — when includeUnlocatedStore is on — no-coordinate ones).
+ */
+export const unidentifiedSpecimenCount = derived(
+	[taxaStore, filteredSpecies, selectionPolygonStore, includeUnlocatedStore],
+	([$taxa, $filtered, $polygon, $inc]) => {
+		if (!$taxa) return 0;
+		const undet = new Set(
+			$filtered.filter((s) => isUndetermined(s.taxonomicName)).map((s) => s.taxonomicName)
+		);
+		if (undet.size === 0) return 0;
+		const hasPoly = $polygon && $polygon.length >= 3;
+		let n = 0;
+		for (const s of $taxa.specimensByCatalogue.values()) {
+			if (!s.catalogueNumber) continue;
+			if (!undet.has(s.currentDetermination)) continue;
+			if (hasPoly) {
+				const inPoly = s.lat != null && s.lng != null && pointInRing(s.lng, s.lat, $polygon);
+				const noCoords = s.lat == null || s.lng == null;
+				if (!(inPoly || ($inc && noCoords))) continue;
+			}
+			n++;
+		}
+		return n;
+	}
+);
 
 /**
  * Derived: sorted, de-duplicated list of non-empty vernacular names in the
