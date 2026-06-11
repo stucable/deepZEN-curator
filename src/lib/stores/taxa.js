@@ -1,6 +1,7 @@
 import { writable, derived } from 'svelte/store';
 import { selectionPolygonStore } from './map.js';
 import { pointInRing } from '$lib/utils/geo.js';
+import { isUndetermined } from '$lib/utils/csv.js';
 
 /** Raw data loaded from CSV. null until loadSpeciesData() completes. */
 export const taxaStore = writable(null);
@@ -194,6 +195,31 @@ export const filteredSpecies = derived(
 export const totalSpeciesCount = derived(taxaStore, ($taxa) => {
 	if (!$taxa) return 0;
 	return Object.keys($taxa.speciesByName).length;
+});
+
+/**
+ * Derived: total determined species in the dataset (unfiltered), excluding the
+ * undetermined "to-identify" pile (bare genus / "Genus sp." entries). This is the
+ * headline "of N species" total — undetermined entries are surfaced separately.
+ */
+export const determinedSpeciesCount = derived(taxaStore, ($taxa) => {
+	if (!$taxa) return 0;
+	return Object.values($taxa.speciesByName).filter((s) => !isUndetermined(s.taxonomicName)).length;
+});
+
+/**
+ * Derived: the currently-filtered species split into determined vs undetermined,
+ * so the sidebar footer can show a determined-only "showing X of N" count plus a
+ * separate tally of how many "Genus sp." to-identify cards are also in view.
+ */
+export const filteredSpeciesCounts = derived(filteredSpecies, ($fs) => {
+	let determined = 0;
+	let undetermined = 0;
+	for (const s of $fs) {
+		if (isUndetermined(s.taxonomicName)) undetermined++;
+		else determined++;
+	}
+	return { determined, undetermined };
 });
 
 /**

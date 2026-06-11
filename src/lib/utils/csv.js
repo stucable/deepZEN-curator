@@ -108,17 +108,36 @@ export function deriveInstitutionCode(catalogueNumber) {
 }
 
 /**
+ * Trailing tokens that mark a determination as unresolved to species level. Kept
+ * deliberately narrow: "cf."/"aff." tentative IDs carry a real epithet (their last
+ * word) and are NOT in here, so they stay determined.
+ */
+const UNDETERMINED_MARKERS = new Set(['sp', 'sp.', 'spp', 'spp.', 'indet', 'indet.', '?']);
+
+/**
  * True for a determination that hasn't been resolved to a species — a bare genus
- * or one carrying the explicit "sp." rank marker (e.g. "Macaranga sp."). These
- * cards are the curator's to-identify pile and sort to the very end of the grid,
- * after every named species, in all sort modes. "cf."/"aff." tentative IDs keep a
- * specific epithet and are NOT treated as undetermined.
+ * or one whose last word is an undetermined rank marker (e.g. "Macaranga sp.",
+ * "Psychotria indet."). These cards are the curator's to-identify pile and sort to
+ * the very end of the grid, after every named species, in all sort modes.
+ * "cf."/"aff." tentative IDs keep a specific epithet and are NOT treated as
+ * undetermined.
  */
 export function isUndetermined(name) {
 	const words = String(name).trim().split(/\s+/);
 	if (words.length < 2) return true;
-	const last = words[words.length - 1].toLowerCase();
-	return last === 'sp.' || last === 'sp';
+	return UNDETERMINED_MARKERS.has(words[words.length - 1].toLowerCase());
+}
+
+/**
+ * Canonical form for an undetermined determination: "<Genus> sp." Determined names
+ * (incl. cf./aff. tentative IDs) pass through unchanged. The genus token comes from
+ * the Genus column, falling back to the first word of the name; if neither exists the
+ * raw name is kept (avoids a bare " sp."). Idempotent: "Grewia sp." → "Grewia sp.".
+ */
+export function normalizeDetermination(name, genus) {
+	if (!isUndetermined(name)) return name;
+	const g = (genus || '').trim() || String(name).trim().split(/\s+/)[0] || '';
+	return g ? `${g} sp.` : String(name).trim();
 }
 
 /**
@@ -359,8 +378,10 @@ export function parseSpeciesCsv(text) {
 		specimensByCatalogue.set(key, {
 			catalogueNumber,
 			taxonomicName: name,
-			// Equals taxonomicName until a determination log overlays it (later phase).
-			currentDetermination: name,
+			// Display/grouping determination, normalised to the "<Genus> sp." convention
+			// for undetermined specimens (raw taxonomicName above is kept for CSV
+			// write-back). Re-set by the ID-log overlay (applyIdentifications).
+			currentDetermination: normalizeDetermination(name, genus),
 			family,
 			genus,
 			clade,
@@ -623,7 +644,10 @@ export function applyIdentifications(specimensByCatalogue, logEntries) {
 	}
 	for (const specimen of specimensByCatalogue.values()) {
 		const winner = latestByBarcode.get(specimen.catalogueNumber);
-		specimen.currentDetermination = winner ? winner.scientificName : specimen.taxonomicName;
+		specimen.currentDetermination = normalizeDetermination(
+			winner ? winner.scientificName : specimen.taxonomicName,
+			specimen.genus
+		);
 	}
 	return specimensByCatalogue;
 }
