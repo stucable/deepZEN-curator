@@ -65,6 +65,7 @@ export const sortStore = writable('family');
 
 /** Active filter state. */
 export const filterStore = writable({
+	search: '',
 	order: '',
 	family: '',
 	genus: '',
@@ -156,8 +157,12 @@ function speciesKeysInPolygon($taxa, polygon) {
  * Derived: species array filtered by current filter selection, sorted per the
  * active `sortStore` mode. Sources from one of three pre-sorted arrays built
  * at parse time; Array.filter preserves order so no runtime sort is needed.
- * A map polygon, when drawn, narrows the result to species occurring in that
- * region (a species with no geolocated specimen inside is dropped).
+ * A free-text search (substring match over the precomputed `searchText`, AND
+ * across whitespace-separated tokens) narrows further. A map polygon, when drawn,
+ * narrows the result to species occurring in that region (a species with no
+ * geolocated specimen inside is dropped). Search is applied here rather than via
+ * `matchesField`/`FILTER_FIELDS` so it stays out of the option-count machinery —
+ * the dropdown "(N)" labels keep counting only the dropdown filters.
  */
 export const filteredSpecies = derived(
 	[taxaStore, filterStore, sortStore, selectionPolygonStore],
@@ -169,11 +174,17 @@ export const filteredSpecies = derived(
 			$sort === 'family' ? $taxa.sortedByFamily :
 			$taxa.sortedByOrder;
 
-		const filtered = applyFilters(source, $filter);
+		let result = applyFilters(source, $filter);
+
+		const q = $filter.search?.trim().toLowerCase();
+		if (q) {
+			const tokens = q.split(/\s+/);
+			result = result.filter((s) => tokens.every((t) => s.searchText.includes(t)));
+		}
 
 		const inPolygon = speciesKeysInPolygon($taxa, $polygon);
-		if (!inPolygon) return filtered;
-		return filtered.filter((s) => inPolygon.has(s.taxonomicName));
+		if (!inPolygon) return result;
+		return result.filter((s) => inPolygon.has(s.taxonomicName));
 	}
 );
 

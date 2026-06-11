@@ -89,6 +89,7 @@
 	class="relative h-48 w-48 shrink-0 cursor-pointer overflow-hidden rounded border border-gray-200 bg-gray-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800"
 	onclick={onclick}
 	aria-label="View {catalogueNumber}"
+	aria-busy={loading}
 >
 	{#if imgSrc}
 		<img

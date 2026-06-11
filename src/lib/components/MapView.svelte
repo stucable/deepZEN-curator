@@ -36,8 +36,8 @@
 	const thinStroke = $derived(viewBox.w * 0.003);
 	const polyStroke = $derived(viewBox.w * 0.006);
 
-	let svgEl;
-	let containerEl;
+	let svgEl = $state(null);
+	let containerEl = $state(null);
 
 	// Project a set of [lng,lat] rings into a single SVG path (rings concatenated,
 	// each closed). Shared by the coastline outline and every biome polygon so they
@@ -309,7 +309,7 @@
 		return { x: p.x, y: p.y };
 	}
 
-	let panning = false;
+	let panning = $state(false); // read in the svg cursor class, so must be reactive
 	let panStart = null;
 	// The specimen whose point the press started on (read from pointerdown's target).
 	// We open its modal on pointerup-without-drag rather than via the circle's own

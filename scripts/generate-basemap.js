@@ -80,8 +80,6 @@ async function main() {
 			tmp
 		);
 		const rings = coast.features.flatMap((f) => geometryToRings(f.geometry));
-		await writeFile(join(OUT_DIR, 'madagascar.js'), renderOutline(rings));
-		console.log(`madagascar.js: ${rings.length} rings, ${countVerts(rings)} verts`);
 
 		// --- Biomes ------------------------------------------------------------
 		const biomeSrc = join(SRC_DIR, 'Ecoregions2017.zip');
@@ -103,7 +101,14 @@ async function main() {
 			.sort((a, b) => a.order - b.order)
 			.map(({ order, ...rest }) => rest); // drop the sort key from the shipped data
 
-		await writeFile(join(OUT_DIR, 'madagascar-biomes.js'), renderBiomes(biomes));
+		// Render both modules before writing either, so a render error can't leave
+		// the bundled pair half-updated.
+		const outlineJs = renderOutline(rings);
+		const biomesJs = renderBiomes(biomes);
+		await writeFile(join(OUT_DIR, 'madagascar.js'), outlineJs);
+		await writeFile(join(OUT_DIR, 'madagascar-biomes.js'), biomesJs);
+
+		console.log(`madagascar.js: ${rings.length} rings, ${countVerts(rings)} verts`);
 		const totalVerts = biomes.reduce((n, b) => n + countVerts(b.rings), 0);
 		console.log(`madagascar-biomes.js: ${biomes.length} classes, ${totalVerts} verts`);
 	} finally {

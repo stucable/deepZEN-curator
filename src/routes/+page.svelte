@@ -61,6 +61,7 @@
 
 	function defaultFilterState() {
 		return {
+			search: '',
 			order: '',
 			family: '',
 			genus: '',
