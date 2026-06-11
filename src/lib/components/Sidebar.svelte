@@ -189,16 +189,17 @@
 	</div>
 	{/if}
 
-	<!-- Region (map polygon) — narrows each card's images to the selected area.
-	     Browse-only; in Map mode the toolbar's own "Clear region filter" applies. -->
-	{#if $viewModeStore === 'browse' && $selectionPolygonStore}
+	<!-- Region (map polygon) — narrows the Browse grid's images and the Curate
+	     specimen list to the selected area. Shown in those two views; in Map mode the
+	     toolbar's own "Clear region filter" applies. -->
+	{#if ($viewModeStore === 'browse' || $viewModeStore === 'curate') && $selectionPolygonStore}
 	<hr class="border-gray-200 dark:border-gray-700" />
 
 	<div>
 		<h2 class="mb-1 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Region</h2>
 		<div class="rounded border border-amber-300 bg-amber-50 px-2.5 py-2 dark:border-amber-700 dark:bg-amber-950">
 			<p class="text-xs text-amber-800 dark:text-amber-200">
-				Showing specimen images inside the selected map region.
+				Showing {$viewModeStore === 'curate' ? 'specimens' : 'specimen images'} inside the selected map region.
 			</p>
 			<label class="mt-2 flex cursor-pointer items-center gap-2 text-xs text-amber-800 dark:text-amber-200">
 				<input

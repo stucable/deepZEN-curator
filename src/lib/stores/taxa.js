@@ -172,6 +172,18 @@ function speciesKeysInPolygon($taxa, polygon) {
 }
 
 /**
+ * Derived: the set of species (currentDetermination keys) that have at least one
+ * geolocated specimen inside the drawn region polygon, or null when no polygon is
+ * active. The single definition of "which species occur in the region" — consumed by
+ * `filteredSpecies` (so the Browse grid + map narrow to it) and by the Curate view (to
+ * gate which no-coordinate specimens it shows), keeping the two views in lock-step.
+ */
+export const regionSpeciesKeys = derived(
+	[taxaStore, selectionPolygonStore],
+	([$taxa, $polygon]) => ($taxa ? speciesKeysInPolygon($taxa, $polygon) : null)
+);
+
+/**
  * Derived: species array filtered by current filter selection, sorted per the
  * active `sortStore` mode. Sources from one of three pre-sorted arrays built
  * at parse time; Array.filter preserves order so no runtime sort is needed.
@@ -183,8 +195,8 @@ function speciesKeysInPolygon($taxa, polygon) {
  * the dropdown "(N)" labels keep counting only the dropdown filters.
  */
 export const filteredSpecies = derived(
-	[taxaStore, filterStore, sortStore, selectionPolygonStore],
-	([$taxa, $filter, $sort, $polygon]) => {
+	[taxaStore, filterStore, sortStore, regionSpeciesKeys],
+	([$taxa, $filter, $sort, $regionKeys]) => {
 		if (!$taxa) return [];
 
 		const source =
@@ -200,9 +212,8 @@ export const filteredSpecies = derived(
 			result = result.filter((s) => tokens.every((t) => s.searchText.includes(t)));
 		}
 
-		const inPolygon = speciesKeysInPolygon($taxa, $polygon);
-		if (!inPolygon) return result;
-		return result.filter((s) => inPolygon.has(s.taxonomicName));
+		if (!$regionKeys) return result;
+		return result.filter((s) => $regionKeys.has(s.taxonomicName));
 	}
 );
 
