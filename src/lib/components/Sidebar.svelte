@@ -524,15 +524,18 @@
 	<hr class="border-gray-200 dark:border-gray-700" />
 
 	<!-- Species count (determined only) + a separate line tallying the individual
-	     undetermined specimens (sheets) in the "Genus sp." to-identify pile. -->
-	<p class="text-sm text-gray-500 dark:text-gray-400">
-		Showing <span class="font-semibold text-gray-800 dark:text-gray-200">{$filteredSpeciesCounts.determined}</span>
-		of {$determinedSpeciesCount} species
-	</p>
-	{#if $unidentifiedSpecimenCount > 0}
-		<p class="text-sm text-gray-400 dark:text-gray-500">
-			and {$unidentifiedSpecimenCount} unidentified specimen{$unidentifiedSpecimenCount === 1 ? '' : 's'}
+	     undetermined specimens (sheets) in the "Genus sp." to-identify pile.
+	     Wrapped so the two lines sit half the container gap apart. -->
+	<div class="flex flex-col gap-2">
+		<p class="text-sm text-gray-500 dark:text-gray-400">
+			Showing <span class="font-semibold text-gray-800 dark:text-gray-200">{$filteredSpeciesCounts.determined}</span>
+			of {$determinedSpeciesCount} species
 		</p>
-	{/if}
+		{#if $unidentifiedSpecimenCount > 0}
+			<p class="text-sm text-gray-400 dark:text-gray-500">
+				and {$unidentifiedSpecimenCount} unidentified specimen{$unidentifiedSpecimenCount === 1 ? '' : 's'}
+			</p>
+		{/if}
+	</div>
 	{/if}
 </div>

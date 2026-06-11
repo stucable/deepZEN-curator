@@ -1,16 +1,18 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
 
-	let { images = [], startIndex = 0, folderHandle = null, speciesName = '', onClose = () => {} } = $props();
-
+	// State arrives from the opener (the main herbarium window) via postMessage —
+	// the viewer never reads the image folder itself (File System Access permission
+	// does not carry into a new window). See $lib/utils/viewerWindow.js.
+	let images = $state([]);
 	let currentIndex = $state(0);
+	let speciesName = $state('');
+	let initialised = $state(false);
+	let disconnected = $state(!hasOpener());
 
-	$effect(() => {
-		currentIndex = startIndex;
-	});
 	let imgSrc = $state(null);
 	let loading = $state(true);
-	let overlayEl;
+	let viewerEl;
 	let objectUrl = null;
 	let imageLoadGeneration = 0;
 
@@ -33,23 +35,80 @@
 	const zoomLabel = $derived(`${scale}×`);
 	const isZoomed = $derived(scale > 1);
 
+	function hasOpener() {
+		try {
+			return !!(window.opener && !window.opener.closed);
+		} catch {
+			return false;
+		}
+	}
+
+	function handleMessage(event) {
+		if (event.origin !== location.origin) return;
+		const data = event.data;
+		if (!data || typeof data !== 'object') return;
+
+		if (data.type === 'zen-viewer:init') {
+			// Idempotent — a later click just swaps in another species' images.
+			images = Array.isArray(data.images) ? data.images : [];
+			speciesName = data.speciesName || '';
+			currentIndex = Math.min(Math.max(0, data.startIndex || 0), Math.max(0, images.length - 1));
+			initialised = true;
+			document.title = speciesName ? `${speciesName} — viewer` : 'Image viewer';
+			return;
+		}
+
+		if (data.type === 'zen-viewer:image') {
+			receiveImage(data);
+		}
+	}
+
+	function receiveImage({ catalogue, blob, generation }) {
+		// Drop stale replies — only the most recent request's generation counts.
+		if (generation !== imageLoadGeneration) return;
+		if (catalogue !== images[currentIndex]) return;
+		clearImageUrl();
+		if (blob) {
+			objectUrl = URL.createObjectURL(blob);
+			imgSrc = objectUrl;
+		} else {
+			imgSrc = null;
+		}
+		loading = false;
+	}
+
 	onMount(() => {
-		overlayEl?.focus();
+		window.addEventListener('message', handleMessage);
+		viewerEl?.focus();
+		// Tell the opener we're ready; it replies with the init payload.
+		if (hasOpener()) {
+			window.opener.postMessage({ type: 'zen-viewer:ready' }, location.origin);
+		}
 	});
 
 	onDestroy(() => {
 		imageLoadGeneration++;
+		window.removeEventListener('message', handleMessage);
 		clearImageUrl();
 	});
 
+	// Request the current image from the opener whenever the index/list changes.
 	$effect(() => {
-		const folder = folderHandle;
 		const catalogue = images[currentIndex];
 		const generation = ++imageLoadGeneration;
-
 		resetZoom();
 		clearImageUrl();
-		loadCurrentImage({ folder, catalogue, generation });
+		if (!initialised || !catalogue) {
+			loading = false;
+			return;
+		}
+		if (!hasOpener()) {
+			disconnected = true;
+			loading = false;
+			return;
+		}
+		loading = true;
+		window.opener.postMessage({ type: 'zen-viewer:request', catalogue, generation }, location.origin);
 	});
 
 	function clearImageUrl() {
@@ -58,36 +117,6 @@
 			objectUrl = null;
 		}
 		imgSrc = null;
-	}
-
-	function isCurrentImageLoad(generation) {
-		return generation === imageLoadGeneration;
-	}
-
-	async function loadCurrentImage({ folder, catalogue, generation }) {
-		if (!folder || !catalogue) {
-			loading = false;
-			return;
-		}
-		loading = true;
-		try {
-			const fileHandle = await folder.getFileHandle(`${catalogue}.jpg`);
-			const file = await fileHandle.getFile();
-			const url = URL.createObjectURL(file);
-			if (!isCurrentImageLoad(generation)) {
-				URL.revokeObjectURL(url);
-				return;
-			}
-			objectUrl = url;
-			imgSrc = url;
-		} catch {
-			if (!isCurrentImageLoad(generation)) return;
-			imgSrc = null;
-		} finally {
-			if (isCurrentImageLoad(generation)) {
-				loading = false;
-			}
-		}
 	}
 
 	function resetZoom() {
@@ -170,35 +199,33 @@
 	}
 
 	function handleKeydown(e) {
-		if (e.key === 'Escape') onClose();
+		if (e.key === 'Escape') window.close();
 		else if (e.key === 'ArrowLeft') prev();
 		else if (e.key === 'ArrowRight') next();
 		else if (e.key === '+' || e.key === '=') zoomIn();
 		else if (e.key === '-') zoomOut();
 		else if (e.key === '0') resetZoom();
 	}
-
-	function handleOverlayClick(e) {
-		if (e.target === overlayEl) onClose();
-	}
 </script>
+
+<svelte:head>
+	<title>Image viewer</title>
+</svelte:head>
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
-	bind:this={overlayEl}
-	class="fixed inset-0 z-50 flex items-center justify-center bg-black/90"
-	onclick={handleOverlayClick}
+	bind:this={viewerEl}
+	class="fixed inset-0 flex items-center justify-center bg-black"
 	onkeydown={handleKeydown}
 	tabindex="0"
 	role="dialog"
-	aria-label="Image lightbox for {speciesName}"
-	aria-modal="true"
+	aria-label="Image viewer for {speciesName}"
 >
 	<!-- Close button -->
 	<button
-		onclick={onClose}
+		onclick={() => window.close()}
 		class="absolute top-4 right-4 z-10 cursor-pointer rounded-full bg-white/20 p-2 text-white hover:bg-white/30 focus:ring-2 focus:ring-white focus:outline-none"
-		aria-label="Close lightbox"
+		aria-label="Close viewer"
 	>
 		<svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -206,12 +233,14 @@
 	</button>
 
 	<!-- Header info -->
-	<div class="absolute top-4 left-4 z-10 text-white">
-		<p class="font-species text-sm font-semibold">{speciesName}</p>
-		<p class="text-xs text-white/70">
-			{currentIndex + 1} / {images.length} &mdash; {currentCatalogue}
-		</p>
-	</div>
+	{#if initialised}
+		<div class="absolute top-4 left-4 z-10 text-white">
+			<p class="font-species text-sm font-semibold">{speciesName}</p>
+			<p class="text-xs text-white/70">
+				{currentIndex + 1} / {images.length} &mdash; {currentCatalogue}
+			</p>
+		</div>
+	{/if}
 
 	<!-- Previous button -->
 	{#if currentIndex > 0}
@@ -229,18 +258,22 @@
 	<!-- Image -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
-		class="flex h-[85vh] w-[90vw] items-center justify-center overflow-hidden"
+		class="flex h-screen w-screen items-center justify-center overflow-hidden"
 		onwheel={handleWheel}
 		bind:clientWidth={viewportWidth}
 		bind:clientHeight={viewportHeight}
 	>
-		{#if loading}
+		{#if disconnected}
+			<p class="max-w-sm px-6 text-center text-white/60">
+				Open this viewer from the herbarium window by clicking a specimen image.
+			</p>
+		{:else if loading}
 			<div class="h-10 w-10 animate-spin rounded-full border-4 border-white/30 border-t-white"></div>
 		{:else if imgSrc}
 			<img
 				src={imgSrc}
 				alt="{speciesName} — {currentCatalogue}"
-				class="max-h-[85vh] max-w-[90vw] select-none"
+				class="max-h-screen max-w-[100vw] select-none"
 				class:transition-transform={!isPanning}
 				class:duration-150={!isPanning}
 				class:ease-out={!isPanning}
@@ -276,43 +309,45 @@
 	{/if}
 
 	<!-- Zoom controls -->
-	<div class="absolute right-4 bottom-4 z-10 flex flex-col items-center gap-1">
-		<button
-			onclick={zoomIn}
-			disabled={scale === ZOOM_STEPS[ZOOM_STEPS.length - 1]}
-			class="cursor-pointer rounded-full bg-white/20 p-2 text-white hover:bg-white/30 focus:ring-2 focus:ring-white focus:outline-none disabled:cursor-default disabled:opacity-30"
-			aria-label="Zoom in"
-		>
-			<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v12M6 12h12" />
-			</svg>
-		</button>
-
-		<span class="min-w-[2.5rem] rounded bg-black/50 px-1.5 py-0.5 text-center text-xs font-medium text-white/80">
-			{zoomLabel}
-		</span>
-
-		<button
-			onclick={zoomOut}
-			disabled={scale === 1}
-			class="cursor-pointer rounded-full bg-white/20 p-2 text-white hover:bg-white/30 focus:ring-2 focus:ring-white focus:outline-none disabled:cursor-default disabled:opacity-30"
-			aria-label="Zoom out"
-		>
-			<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 12h12" />
-			</svg>
-		</button>
-
-		{#if isZoomed}
+	{#if initialised && imgSrc}
+		<div class="absolute right-4 bottom-4 z-10 flex flex-col items-center gap-1">
 			<button
-				onclick={resetZoom}
-				class="mt-1 cursor-pointer rounded-full bg-white/20 p-2 text-white hover:bg-white/30 focus:ring-2 focus:ring-white focus:outline-none"
-				aria-label="Reset zoom"
+				onclick={zoomIn}
+				disabled={scale === ZOOM_STEPS[ZOOM_STEPS.length - 1]}
+				class="cursor-pointer rounded-full bg-white/20 p-2 text-white hover:bg-white/30 focus:ring-2 focus:ring-white focus:outline-none disabled:cursor-default disabled:opacity-30"
+				aria-label="Zoom in"
 			>
 				<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5M4 9a9 9 0 0 1 15.36-5.36M20 15a9 9 0 0 1-15.36 5.36" />
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v12M6 12h12" />
 				</svg>
 			</button>
-		{/if}
-	</div>
+
+			<span class="min-w-[2.5rem] rounded bg-black/50 px-1.5 py-0.5 text-center text-xs font-medium text-white/80">
+				{zoomLabel}
+			</span>
+
+			<button
+				onclick={zoomOut}
+				disabled={scale === 1}
+				class="cursor-pointer rounded-full bg-white/20 p-2 text-white hover:bg-white/30 focus:ring-2 focus:ring-white focus:outline-none disabled:cursor-default disabled:opacity-30"
+				aria-label="Zoom out"
+			>
+				<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 12h12" />
+				</svg>
+			</button>
+
+			{#if isZoomed}
+				<button
+					onclick={resetZoom}
+					class="mt-1 cursor-pointer rounded-full bg-white/20 p-2 text-white hover:bg-white/30 focus:ring-2 focus:ring-white focus:outline-none"
+					aria-label="Reset zoom"
+				>
+					<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5M4 9a9 9 0 0 1 15.36-5.36M20 15a9 9 0 0 1-15.36 5.36" />
+					</svg>
+				</button>
+			{/if}
+		</div>
+	{/if}
 </div>

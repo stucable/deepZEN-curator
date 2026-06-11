@@ -3,7 +3,7 @@
 	import { currentDatasetStore } from '$lib/stores/dataset.js';
 	import { loadThumbnail } from '$lib/utils/thumbnails.js';
 
-	let { catalogueNumber, folderHandle = null, onclick = () => {} } = $props();
+	let { catalogueNumber, folderHandle = null, onclick = () => {}, isType = false } = $props();
 
 	let imgSrc = $state(null);
 	let error = $state(false);
@@ -86,7 +86,7 @@
 <button
 	bind:this={containerEl}
 	type="button"
-	class="relative h-48 w-48 shrink-0 cursor-pointer overflow-hidden rounded border border-gray-200 bg-gray-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800"
+	class="relative h-48 w-48 shrink-0 cursor-pointer overflow-hidden rounded bg-gray-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none dark:bg-gray-800 {isType ? 'border-2 border-red-500 dark:border-red-500' : 'border border-gray-200 dark:border-gray-700'}"
 	onclick={onclick}
 	aria-label="View {catalogueNumber}"
 	aria-busy={loading}

@@ -1,18 +1,17 @@
 <script>
 	import { folderHandleStore } from '$lib/stores/folder.js';
 	import { typeStatusByImageFile } from '$lib/stores/taxa.js';
+	import { openImageViewer } from '$lib/utils/viewerWindow.js';
 	import HerbariumImage from './HerbariumImage.svelte';
-	import Lightbox from './Lightbox.svelte';
 
 	let { species } = $props();
-	let lightboxIndex = $state(null);
 
-	function openLightbox(index) {
-		lightboxIndex = index;
-	}
-
-	function closeLightbox() {
-		lightboxIndex = null;
+	function openViewer(index) {
+		openImageViewer({
+			images: species.images,
+			startIndex: index,
+			speciesName: species.taxonomicName
+		});
 	}
 </script>
 
@@ -32,7 +31,8 @@
 				<HerbariumImage
 					catalogueNumber={cat}
 					folderHandle={$folderHandleStore}
-					onclick={() => openLightbox(i)}
+					onclick={() => openViewer(i)}
+					isType={$typeStatusByImageFile.has(cat)}
 				/>
 				{#if $typeStatusByImageFile.has(cat)}
 					<span
@@ -46,13 +46,3 @@
 		{/each}
 	</div>
 </article>
-
-{#if lightboxIndex !== null}
-	<Lightbox
-		images={species.images}
-		startIndex={lightboxIndex}
-		folderHandle={$folderHandleStore}
-		speciesName={species.taxonomicName}
-		onClose={closeLightbox}
-	/>
-{/if}
