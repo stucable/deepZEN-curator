@@ -53,6 +53,9 @@ docs/curation-roadmap.md
 data-files/
 RENAME_FOLDER.md
 
+# Downloaded source GeoJSON for the map basemap generator (large; re-downloadable)
+scripts/geo-src/
+
 # Local server binary (testers download their own — see CLAUDE.md)
 miniserve.exe
 

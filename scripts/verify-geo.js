@@ -9,6 +9,8 @@ import {
 	inBbox,
 	MADAGASCAR_BBOX
 } from '../src/lib/utils/geo.js';
+import { MADAGASCAR_OUTLINE } from '../src/lib/data/madagascar.js';
+import { MADAGASCAR_BIOMES } from '../src/lib/data/madagascar-biomes.js';
 
 let failures = 0;
 function check(label, cond) {
@@ -69,6 +71,32 @@ const bottom = projectLngLat(MADAGASCAR_BBOX.lngMin, MADAGASCAR_BBOX.latMin);
 check('north maps above south (y increases downward)', top.y < bottom.y);
 check('a Madagascar coordinate is in-bbox', inBbox(47.5, -18.9) === true);
 check('a sign-flipped latitude (+24.67) is off-map', inBbox(46.8, 24.666667) === false);
+
+console.log('\n5. bundled basemap data — coastline + biome rings');
+// A ring is well-formed if it has ≥3 vertices, is closed (first === last), and every
+// vertex sits inside the Madagascar bbox (the same guard the map uses to drop bad data).
+function ringWellFormed(ring) {
+	if (!Array.isArray(ring) || ring.length < 4) return false; // ≥3 distinct + closing point
+	const [fx, fy] = ring[0];
+	const [lx, ly] = ring[ring.length - 1];
+	if (fx !== lx || fy !== ly) return false;
+	return ring.every(([lng, lat]) => inBbox(lng, lat));
+}
+const coastOk = MADAGASCAR_OUTLINE.rings.every(ringWellFormed);
+check(`coastline has rings, all closed & in-bbox (${MADAGASCAR_OUTLINE.rings.length} rings)`, MADAGASCAR_OUTLINE.rings.length > 0 && coastOk);
+
+check('biome layer is a non-empty array', Array.isArray(MADAGASCAR_BIOMES) && MADAGASCAR_BIOMES.length > 0);
+const ids = new Set();
+let biomeFields = true;
+let biomeRingsOk = true;
+for (const b of MADAGASCAR_BIOMES) {
+	if (!b.id || !b.label || !/^#[0-9a-fA-F]{6}$/.test(b.colour ?? '')) biomeFields = false;
+	ids.add(b.id);
+	if (!Array.isArray(b.rings) || b.rings.length === 0 || !b.rings.every(ringWellFormed)) biomeRingsOk = false;
+}
+check('every biome has id, label, and a #rrggbb colour', biomeFields);
+check('biome ids are unique', ids.size === MADAGASCAR_BIOMES.length);
+check('every biome ring is closed & in-bbox', biomeRingsOk);
 
 console.log('');
 if (failures === 0) {

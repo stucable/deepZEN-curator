@@ -1,4 +1,4 @@
-deepZEN-curator  —  v1.0  (Ankarafantsika + Ranomafana + Macaranga, 2026-06-10)
+deepZEN-curator  —  v1.1  (Ankarafantsika + Ranomafana + Macaranga, 2026-06-11)
 ===============================================================================
 
 Offline herbarium image browser for field botanists in Madagascar.
@@ -9,6 +9,17 @@ Runs entirely on your laptop — no internet needed once you have the files.
 Three views — Images, Data and Map — let you browse specimen photos,
 edit the records behind them, and place georeferenced collections on a
 map of Madagascar.
+
+
+WHAT'S NEW IN v1.1
+------------------
+- The Map view has a fresh look: a smoother coastline, plus Madagascar's
+  vegetation zones (biomes) shown as soft background colours with a key
+  in the top-left. Hide or show them with the "Biomes" button.
+- A distance scale bar now sits in the bottom-left of the map.
+- Occurrence points are brighter and easier to pick out.
+(The map appears only for georeferenced datasets like Macaranga;
+Ankarafantsika and Ranomafana are single-site checklists with no map.)
 
 
 QUICK START (Windows 11)
@@ -169,6 +180,9 @@ table and map — without a reload.
 
 MAP & GEOREFERENCING (Map view)
 -------------------------------
+- Soft background colours show Madagascar's vegetation zones (biomes),
+  with a key in the top-left; the "Biomes" button hides or shows them.
+  A distance scale bar sits in the bottom-left.
 - Each species has its own colour, listed in the legend on the right.
   Click a species in the legend to show or hide it; use "Hide all" /
   "Show all" to isolate one or two; drag the "Point size" slider to
@@ -357,7 +371,7 @@ REPORTING ISSUES / GETTING UPDATES
 ----------------------------------
 - If something looks wrong (missing species, broken image, weird
   filter behaviour), email Stuart with a screenshot and the
-  version number at the top of this file (v1.0).
+  version number at the top of this file (v1.1).
 - New versions will arrive by email as a small zip. Unzip over
   the old folder (or delete the old folder first to avoid stale
   cached files), then double-click start.bat as before.

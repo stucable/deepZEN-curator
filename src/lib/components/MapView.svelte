@@ -11,6 +11,7 @@
 		pointInRing
 	} from '$lib/utils/geo.js';
 	import { MADAGASCAR_OUTLINE } from '$lib/data/madagascar.js';
+	import { MADAGASCAR_BIOMES } from '$lib/data/madagascar-biomes.js';
 	import { colourForIndex, PALETTE_SIZE } from '$lib/utils/palette.js';
 	import { isUndetermined } from '$lib/utils/csv.js';
 	import SpecimenEditModal from './SpecimenEditModal.svelte';
@@ -38,18 +39,28 @@
 	let svgEl;
 	let containerEl;
 
-	// Basemap outline as one SVG path (multiple rings concatenated).
-	const outlinePath = MADAGASCAR_OUTLINE.rings
-		.map(
-			(ring) =>
-				ring
-					.map(([lng, lat], i) => {
-						const { x, y } = projectLngLat(lng, lat);
-						return `${i === 0 ? 'M' : 'L'}${x.toFixed(4)} ${y.toFixed(4)}`;
-					})
-					.join(' ') + ' Z'
-		)
-		.join(' ');
+	// Project a set of [lng,lat] rings into a single SVG path (rings concatenated,
+	// each closed). Shared by the coastline outline and every biome polygon so they
+	// all live in the same projected space as the points.
+	function ringsToPath(rings) {
+		return rings
+			.map(
+				(ring) =>
+					ring
+						.map(([lng, lat], i) => {
+							const { x, y } = projectLngLat(lng, lat);
+							return `${i === 0 ? 'M' : 'L'}${x.toFixed(4)} ${y.toFixed(4)}`;
+						})
+						.join(' ') + ' Z'
+			)
+			.join(' ');
+	}
+
+	const outlinePath = ringsToPath(MADAGASCAR_OUTLINE.rings);
+	// Pre-project each biome's polygons once (static data → computed at module init).
+	const biomePaths = MADAGASCAR_BIOMES.map((b) => ({ ...b, d: ringsToPath(b.rings) }));
+	// Habitat (biome) layer visibility — view-only session state, like pointScale.
+	let showBiomes = $state(true);
 
 	// Split a taxon name at an infraspecific rank ("var." / "subsp." / "ssp.") so the
 	// legend can force a line break before it: line 1 = binomial, line 2 = the rank +
@@ -403,6 +414,38 @@
 		viewBox = { ...base };
 	}
 
+	// ---- Scale bar -----------------------------------------------------------
+	// The cos-latitude correction in geo.js makes one projected unit ≈ the same ground
+	// distance on both axes, so 1 unit ≈ 111.32 km (one degree of longitude). The bar
+	// length follows the on-screen scale (preserveAspectRatio="meet" → uniform fit, so
+	// px-per-unit is the smaller of the width/height ratios).
+	const KM_PER_UNIT = 111.32;
+	const NICE_KM = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000];
+	let containerWidth = $state(0);
+	let containerHeight = $state(0);
+	$effect(() => {
+		const el = containerEl;
+		if (!el) return;
+		const ro = new ResizeObserver((entries) => {
+			const r = entries[0].contentRect;
+			containerWidth = r.width;
+			containerHeight = r.height;
+		});
+		ro.observe(el);
+		const r = el.getBoundingClientRect();
+		containerWidth = r.width;
+		containerHeight = r.height;
+		return () => ro.disconnect();
+	});
+	const scaleBar = $derived.by(() => {
+		if (!containerWidth || !containerHeight) return null;
+		const pxPerUnit = Math.min(containerWidth / viewBox.w, containerHeight / viewBox.h);
+		const targetKm = ((0.22 * containerWidth) / pxPerUnit) * KM_PER_UNIT;
+		let km = NICE_KM[0];
+		for (const s of NICE_KM) if (s <= targetKm) km = s;
+		return { km, px: (km / KM_PER_UNIT) * pxPerUnit };
+	});
+
 	// ---- Polygon drawing -----------------------------------------------------
 	let drawing = $state(false);
 	let vertices = $state([]); // [{x, y}] in SVG user space
@@ -551,6 +594,18 @@
 			Reset view
 		</button>
 
+		<button
+			type="button"
+			onclick={() => (showBiomes = !showBiomes)}
+			aria-pressed={showBiomes}
+			title="Show vegetation zones (habitats) under the points"
+			class="cursor-pointer rounded border px-3 py-1 font-medium {showBiomes
+				? 'border-emerald-600 bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+				: 'border-gray-300 text-gray-600 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800'}"
+		>
+			Biomes
+		</button>
+
 		<!-- Find a specimen by barcode or collector + number (whole dataset) -->
 		<div class="relative">
 			<input
@@ -647,14 +702,27 @@
 					role="application"
 					aria-label="Map of Madagascar showing specimen records"
 				>
-					<!-- Basemap -->
+					<!-- Basemap: parchment land, biome zones clipped to the coast, then a
+					     crisp shoreline stroke on top so the coastline stays sharp over the fills. -->
+					<defs>
+						<clipPath id="coast-clip">
+							<path d={outlinePath} />
+						</clipPath>
+					</defs>
+					<path d={outlinePath} fill="#f3efe3" class="dark:fill-stone-800" pointer-events="none" />
+					{#if showBiomes}
+						<g clip-path="url(#coast-clip)" pointer-events="none">
+							{#each biomePaths as b (b.id)}
+								<path d={b.d} fill={b.colour} fill-opacity="0.42" class="dark:[fill-opacity:0.3]" />
+							{/each}
+						</g>
+					{/if}
 					<path
 						d={outlinePath}
-						fill="#d1fae5"
-						fill-opacity="0.5"
-						stroke="#10b981"
+						fill="none"
+						stroke="#9aa7b5"
 						stroke-width={thinStroke}
-						class="dark:fill-emerald-900/30"
+						class="dark:stroke-stone-500"
 						pointer-events="none"
 					/>
 
@@ -707,7 +775,7 @@
 							cy={p.y}
 							r={pointRadius}
 							fill={p.colour}
-							fill-opacity="0.85"
+							fill-opacity="0.95"
 							stroke="#1f2937"
 							stroke-width={thinStroke}
 							data-cat={p.specimen.catalogueNumber}
@@ -764,6 +832,45 @@
 						<div class="text-gray-600 dark:text-gray-300">Barcode: {hovered.catalogueNumber}</div>
 						<div class="text-gray-600 dark:text-gray-300">
 							{hovered.recordedBy || '—'}{hovered.recordNumber ? ` ${hovered.recordNumber}` : ''}
+						</div>
+					</div>
+				{/if}
+
+				<!-- Biome key (top-left), shown when the habitat layer is on -->
+				{#if showBiomes}
+					<div
+						class="pointer-events-none absolute left-2 top-2 z-10 rounded-md border border-gray-200 bg-white/85 px-2.5 py-2 text-[11px] shadow-sm dark:border-gray-700 dark:bg-gray-800/85"
+					>
+						<div class="mb-1 font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+							Habitats
+						</div>
+						<ul class="flex flex-col gap-0.5">
+							{#each biomePaths as b (b.id)}
+								<li class="flex items-center gap-1.5">
+									<span
+										class="inline-block size-2.5 shrink-0 rounded-sm"
+										style:background-color={b.colour}
+									></span>
+									<span class="text-gray-700 dark:text-gray-200">{b.label}</span>
+								</li>
+							{/each}
+						</ul>
+					</div>
+				{/if}
+
+				<!-- Scale bar (bottom-left) -->
+				{#if scaleBar}
+					<div class="pointer-events-none absolute bottom-2 left-2 z-10">
+						<div
+							class="border-b-2 border-l-2 border-r-2 border-gray-500 dark:border-gray-300"
+							style:width="{scaleBar.px}px"
+							style:height="5px"
+						></div>
+						<div
+							class="text-center text-[11px] leading-tight text-gray-600 dark:text-gray-300"
+							style:width="{scaleBar.px}px"
+						>
+							{scaleBar.km} km
 						</div>
 					</div>
 				{/if}
