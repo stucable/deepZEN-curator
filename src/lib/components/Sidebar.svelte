@@ -1,9 +1,9 @@
 <script>
-	import { taxaStore, taxaSourceStore, taxaSourceFilenameStore, csvLoadErrorStore, filterStore, determinedSpeciesCount, filteredSpeciesCounts, unidentifiedSpecimenCount, availableFamilies, availableGenera, vernacularOptions, filterOptionCounts, DEFAULT_HABITS } from '$lib/stores/taxa.js';
+	import { taxaStore, taxaSourceStore, taxaSourceFilenameStore, csvLoadErrorStore, filterStore, determinedSpeciesCount, filteredSpeciesCounts, mapVisibleSpeciesCount, unidentifiedSpecimenCount, availableFamilies, availableGenera, vernacularOptions, filterOptionCounts, DEFAULT_HABITS } from '$lib/stores/taxa.js';
 	import { folderHandleStore, pendingFolderHandleStore, selectFolder, reconnectFolder } from '$lib/stores/folder.js';
 	import { currentDatasetStore } from '$lib/stores/dataset.js';
 	import { viewModeStore } from '$lib/stores/view.js';
-	import { selectionPolygonStore, includeUnlocatedStore, clearSelection } from '$lib/stores/map.js';
+	import { selectionPolygonStore, includeUnlocatedStore, clearSelection, hiddenSpeciesStore, showAllSpecies } from '$lib/stores/map.js';
 	import { curatorNameStore, curatorHerbariumStore } from '$lib/stores/curator.js';
 	import { VERSION } from '$lib/version.js';
 	import DatasetSelector from './DatasetSelector.svelte';
@@ -214,6 +214,27 @@
 				class="mt-2 w-full cursor-pointer rounded border border-amber-500 px-3 py-1 text-xs font-medium text-amber-700 hover:bg-amber-100 dark:text-amber-300 dark:hover:bg-amber-900"
 			>
 				Clear region
+			</button>
+		</div>
+	</div>
+	{/if}
+
+	<!-- Hidden species (map legend) — these are removed app-wide, but the legend that
+	     hides them lives only in Map view, so surface a restore here for Browse/Curate. -->
+	{#if ($viewModeStore === 'browse' || $viewModeStore === 'curate') && $hiddenSpeciesStore.size > 0}
+	<hr class="border-gray-200 dark:border-gray-700" />
+
+	<div>
+		<h2 class="mb-1 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Hidden species</h2>
+		<div class="rounded border border-gray-300 bg-gray-100 px-2.5 py-2 dark:border-gray-700 dark:bg-gray-800">
+			<p class="text-xs text-gray-600 dark:text-gray-300">
+				{$hiddenSpeciesStore.size} species hidden on the map.
+			</p>
+			<button
+				onclick={showAllSpecies}
+				class="mt-2 w-full cursor-pointer rounded border border-gray-400 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+			>
+				Show all species
 			</button>
 		</div>
 	</div>
@@ -521,14 +542,19 @@
 		Clear filters
 	</button>
 
-	<hr class="border-gray-200 dark:border-gray-700" />
+	{/if}
 
 	<!-- Species count (determined only) + a separate line tallying the individual
-	     undetermined specimens (sheets) in the "Genus sp." to-identify pile.
-	     Wrapped so the two lines sit half the container gap apart. -->
+	     undetermined specimens (sheets) in the "Genus sp." to-identify pile. Shown in all
+	     three views so they stay in step. The Map view counts only species that plot a dot
+	     (mapVisibleSpeciesCount); Browse and Data count all visible determined species,
+	     since their grid/table also include no-coordinate specimens. -->
+	{#if $taxaStore}
+	<hr class="border-gray-200 dark:border-gray-700" />
+
 	<div class="flex flex-col gap-2">
 		<p class="text-sm text-gray-500 dark:text-gray-400">
-			Showing <span class="font-semibold text-gray-800 dark:text-gray-200">{$filteredSpeciesCounts.determined}</span>
+			Showing <span class="font-semibold text-gray-800 dark:text-gray-200">{$viewModeStore === 'map' ? $mapVisibleSpeciesCount : $filteredSpeciesCounts.determined}</span>
 			of {$determinedSpeciesCount} species
 		</p>
 		{#if $unidentifiedSpecimenCount > 0}

@@ -1,6 +1,6 @@
 import { writable, derived } from 'svelte/store';
-import { selectionPolygonStore, includeUnlocatedStore } from './map.js';
-import { pointInRing } from '$lib/utils/geo.js';
+import { selectionPolygonStore, includeUnlocatedStore, hiddenSpeciesStore } from './map.js';
+import { pointInRing, inBbox } from '$lib/utils/geo.js';
 import { isUndetermined } from '$lib/utils/csv.js';
 
 /** Raw data loaded from CSV. null until loadSpeciesData() completes. */
@@ -193,6 +193,10 @@ export const regionSpeciesKeys = derived(
  * geolocated specimen inside is dropped). Search is applied here rather than via
  * `matchesField`/`FILTER_FIELDS` so it stays out of the option-count machinery —
  * the dropdown "(N)" labels keep counting only the dropdown filters.
+ *
+ * This is the *pre-hide* set: the map legend reads it directly so it can list (greyed)
+ * and restore species the user hid via the legend. The Browse grid and the sidebar
+ * counts read `visibleSpecies` below, which subtracts the hidden set.
  */
 export const filteredSpecies = derived(
 	[taxaStore, filterStore, sortStore, regionSpeciesKeys],
@@ -218,18 +222,31 @@ export const filteredSpecies = derived(
 );
 
 /**
- * Derived: the species the Browse grid renders. Identical to `filteredSpecies`
+ * Derived: `filteredSpecies` minus the species hidden via the map legend
+ * (`hiddenSpeciesStore`). This is what the Browse grid, the sidebar counts, and the
+ * undetermined-specimen tally consume, so a legend hide narrows the whole app — like the
+ * region polygon. The map keeps reading `filteredSpecies` (pre-hide) so the legend can
+ * still list and restore hidden species. No-op (returns the same array) when nothing is
+ * hidden.
+ */
+export const visibleSpecies = derived(
+	[filteredSpecies, hiddenSpeciesStore],
+	([$fs, $hidden]) => ($hidden.size ? $fs.filter((s) => !$hidden.has(s.taxonomicName)) : $fs)
+);
+
+/**
+ * Derived: the species the Browse grid renders. Identical to `visibleSpecies`
  * unless a region polygon is active, in which case each species is cloned with its
  * `images` narrowed to the specimen sheets whose coordinates fall inside the polygon
  * — plus, when `includeUnlocatedStore` is on (default), images of specimens that have
  * no coordinates at all. Species left with no images are dropped, so empty cards never
- * render. Kept separate from `filteredSpecies` on purpose: the map and the sidebar
- * species count read `filteredSpecies` and must stay at species-occurrence granularity
+ * render. Kept separate on purpose: the map reads `filteredSpecies` (pre-hide) and the
+ * sidebar species count reads `visibleSpecies`, both at species-occurrence granularity
  * (a species with an in-region but imageless specimen still maps and still counts), so
  * only the grid applies this image-level narrowing.
  */
 export const browseSpecies = derived(
-	[filteredSpecies, selectionPolygonStore, includeUnlocatedStore, imageFileLatLng],
+	[visibleSpecies, selectionPolygonStore, includeUnlocatedStore, imageFileLatLng],
 	([$filtered, $polygon, $includeUnlocated, $latLng]) => {
 		if (!$polygon || $polygon.length < 3) return $filtered;
 
@@ -264,11 +281,12 @@ export const determinedSpeciesCount = derived(taxaStore, ($taxa) => {
 });
 
 /**
- * Derived: the currently-filtered species split into determined vs undetermined,
+ * Derived: the currently-visible species split into determined vs undetermined,
  * so the sidebar footer can show a determined-only "showing X of N" count plus a
- * separate tally of how many "Genus sp." to-identify cards are also in view.
+ * separate tally of how many "Genus sp." to-identify cards are also in view. Reads
+ * `visibleSpecies`, so legend hides reduce the count.
  */
-export const filteredSpeciesCounts = derived(filteredSpecies, ($fs) => {
+export const filteredSpeciesCounts = derived(visibleSpecies, ($fs) => {
 	let determined = 0;
 	let undetermined = 0;
 	for (const s of $fs) {
@@ -279,16 +297,52 @@ export const filteredSpeciesCounts = derived(filteredSpecies, ($fs) => {
 });
 
 /**
+ * Species keys (currentDetermination) that have at least one geolocated, in-bbox
+ * specimen — i.e. that actually show a dot on the map. Species with no coordinates at
+ * all, or whose only coordinates fall off-map (bad data), are excluded.
+ */
+const mappedSpeciesKeys = derived(taxaStore, ($taxa) => {
+	const keys = new Set();
+	if (!$taxa) return keys;
+	for (const s of $taxa.geolocatedSpecimens) {
+		if (inBbox(s.lng, s.lat)) keys.add(s.currentDetermination);
+	}
+	return keys;
+});
+
+/**
+ * Derived: count of determined species currently visible *and mapped* — determined
+ * species in `visibleSpecies` that show at least one dot on the map. The Map view shows
+ * this as its "Showing X of N" numerator, since the map only represents georeferenced
+ * specimens; Browse uses `filteredSpeciesCounts.determined` instead, which also counts
+ * species whose specimens have no coordinates (their thumbnails still appear in the
+ * image grid). `visibleSpecies` already encodes the sidebar filters, the region polygon,
+ * and the legend hides, so this numerator tracks all three.
+ */
+export const mapVisibleSpeciesCount = derived(
+	[visibleSpecies, mappedSpeciesKeys],
+	([$vs, $mapped]) => {
+		let n = 0;
+		for (const s of $vs) {
+			if (!isUndetermined(s.taxonomicName) && $mapped.has(s.taxonomicName)) n++;
+		}
+		return n;
+	}
+);
+
+/**
  * Derived: count of individual undetermined specimens (barcoded sheets in the
  * "Genus sp." to-identify pile) currently in view — not the number of "Genus sp."
  * groups. Powers the sidebar footer's "and N unidentified specimens" line. The
- * in-view undetermined *species* come from `filteredSpecies` (which already applies
- * the sidebar filters + in-region species gate); for each, specimens are counted at
- * the specimen level, honouring the region polygon the same way the Curate table does
- * (inside the polygon, or — when includeUnlocatedStore is on — no-coordinate ones).
+ * in-view undetermined *species* come from `visibleSpecies` (which applies the sidebar
+ * filters, the in-region species gate, and the legend hides); for each, specimens are
+ * counted at the specimen level, honouring the region polygon the same way the Curate
+ * table does (inside the polygon, or — when includeUnlocatedStore is on — no-coordinate
+ * ones). Hiding every indet group in the legend empties the undetermined set, so the
+ * count reaches 0 and the sidebar line hides itself.
  */
 export const unidentifiedSpecimenCount = derived(
-	[taxaStore, filteredSpecies, selectionPolygonStore, includeUnlocatedStore],
+	[taxaStore, visibleSpecies, selectionPolygonStore, includeUnlocatedStore],
 	([$taxa, $filtered, $polygon, $inc]) => {
 		if (!$taxa) return 0;
 		const undet = new Set(
