@@ -19,6 +19,21 @@ export const selectionPolygonStore = writable(null);
  */
 export const includeUnlocatedStore = writable(true);
 
+/**
+ * Species (currentDetermination keys) the user has hidden via the map legend. A
+ * map-drawn narrowing like `selectionPolygonStore`: when non-empty it removes those
+ * species from the Browse grid, the Curate table, and the sidebar counts — not just the
+ * map points. The legend still lists hidden species (greyed) so they can be restored,
+ * and the sidebar offers a "Show all species" escape hatch in Browse/Curate. Session-only;
+ * reset on dataset switch.
+ */
+export const hiddenSpeciesStore = writable(new Set());
+
 export function clearSelection() {
 	selectionPolygonStore.set(null);
+}
+
+/** Un-hide every legend-hidden species. Used by the sidebar and the legend header. */
+export function showAllSpecies() {
+	hiddenSpeciesStore.set(new Set());
 }

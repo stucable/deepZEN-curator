@@ -13,7 +13,7 @@
 	import { restoreTheme } from '$lib/stores/theme.js';
 	import { restoreCuratorName } from '$lib/stores/curator.js';
 	import { viewModeStore } from '$lib/stores/view.js';
-	import { clearSelection } from '$lib/stores/map.js';
+	import { clearSelection, showAllSpecies } from '$lib/stores/map.js';
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import SpeciesGrid from '$lib/components/SpeciesGrid.svelte';
 	import CurationView from '$lib/components/CurationView.svelte';
@@ -160,6 +160,7 @@
 			identificationLogStore.set([]);
 			filterStore.set(defaultFilterState());
 			clearSelection();
+			showAllSpecies();
 			folderHandleStore.set(null);
 			pendingFolderHandleStore.set(null);
 			(async () => {

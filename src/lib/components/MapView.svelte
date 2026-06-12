@@ -1,6 +1,6 @@
 <script>
 	import { taxaStore, filteredSpecies } from '$lib/stores/taxa.js';
-	import { selectionPolygonStore, clearSelection } from '$lib/stores/map.js';
+	import { selectionPolygonStore, clearSelection, hiddenSpeciesStore, showAllSpecies } from '$lib/stores/map.js';
 	import { currentDatasetStore } from '$lib/stores/dataset.js';
 	import {
 		MADAGASCAR_BBOX,
@@ -165,13 +165,13 @@
 		return { points, byCat, legend, offMap, tooMany, speciesCount: determinedKeys.length, missing };
 	});
 
-	// ---- Legend selection (map-only show/hide) -------------------------------
-	// Species names the user has toggled off via the legend. Map display only —
-	// the grid and counts in other views are untouched.
-	let hiddenSpecies = $state(new Set());
-
+	// ---- Legend selection (app-wide show/hide) -------------------------------
+	// Species toggled off via the legend live in the shared hiddenSpeciesStore — a
+	// map-drawn narrowing like the region polygon: it removes them from the points
+	// here AND from the Browse grid, the Curate table, and the sidebar counts. The
+	// legend still lists hidden species (greyed) so they can be restored.
 	const visiblePoints = $derived(
-		plot.points.filter((p) => !hiddenSpecies.has(p.specimen.currentDetermination))
+		plot.points.filter((p) => !$hiddenSpeciesStore.has(p.specimen.currentDetermination))
 	);
 	const visibleSpeciesCount = $derived(
 		new Set(visiblePoints.map((p) => p.specimen.currentDetermination)).size
@@ -179,19 +179,16 @@
 	// True when every species currently in the legend is hidden — drives the
 	// header toggle's label (Show all ⇄ Hide all).
 	const allHidden = $derived(
-		plot.legend.length > 0 && plot.legend.every((i) => hiddenSpecies.has(i.name))
+		plot.legend.length > 0 && plot.legend.every((i) => $hiddenSpeciesStore.has(i.name))
 	);
 
 	function toggleSpecies(name) {
-		const next = new Set(hiddenSpecies);
+		const next = new Set($hiddenSpeciesStore);
 		next.has(name) ? next.delete(name) : next.add(name);
-		hiddenSpecies = next;
-	}
-	function showAllSpecies() {
-		hiddenSpecies = new Set();
+		hiddenSpeciesStore.set(next);
 	}
 	function hideAllSpecies() {
-		hiddenSpecies = new Set(plot.legend.map((i) => i.name));
+		hiddenSpeciesStore.set(new Set(plot.legend.map((i) => i.name)));
 	}
 
 	// ---- Specimen search (whole dataset → locate + open modal) ---------------
@@ -244,14 +241,16 @@
 		searchFocus = null;
 	}
 
-	// Reset legend hides + search when the dataset changes (lastDatasetId is a plain
-	// variable so reading it doesn't re-trigger the effect).
+	// Reset the local search when the dataset changes (lastDatasetId is a plain variable
+	// so reading it doesn't re-trigger the effect). Legend hides are NOT reset here: this
+	// effect also fires on every remount (e.g. switching back from Browse to Map), which
+	// would wipe hides the user expects to persist across views. The hide-set is cleared
+	// centrally on a real dataset switch by +page.svelte (showAllSpecies()).
 	let lastDatasetId;
 	$effect(() => {
 		const id = $currentDatasetStore?.id;
 		if (id !== lastDatasetId) {
 			lastDatasetId = id;
-			hiddenSpecies = new Set();
 			query = '';
 			searchFocus = null;
 		}
@@ -671,8 +670,8 @@
 
 		<span class="ml-auto text-xs text-gray-500 dark:text-gray-400">
 			{visiblePoints.length} points · {visibleSpeciesCount} species
-			{#if hiddenSpecies.size > 0}
-				· <span class="text-gray-400">{hiddenSpecies.size} hidden</span>
+			{#if $hiddenSpeciesStore.size > 0}
+				· <span class="text-gray-400">{$hiddenSpeciesStore.size} hidden</span>
 			{/if}
 			{#if plot.offMap > 0}
 				· <span class="text-amber-600 dark:text-amber-400">{plot.offMap} off-map (bad coordinates)</span>
@@ -905,7 +904,7 @@
 					{#if plot.legend.length > 0}
 						<ul class="flex flex-col gap-1">
 							{#each plot.legend as item (item.name)}
-								{@const hidden = hiddenSpecies.has(item.name)}
+								{@const hidden = $hiddenSpeciesStore.has(item.name)}
 								{@const parts = splitInfra(item.name)}
 								<li>
 									<button

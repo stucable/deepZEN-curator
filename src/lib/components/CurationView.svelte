@@ -1,6 +1,6 @@
 <script>
 	import { taxaStore, regionSpeciesKeys } from '$lib/stores/taxa.js';
-	import { selectionPolygonStore, includeUnlocatedStore } from '$lib/stores/map.js';
+	import { selectionPolygonStore, includeUnlocatedStore, hiddenSpeciesStore } from '$lib/stores/map.js';
 	import { pointInRing } from '$lib/utils/geo.js';
 	import { INSTITUTION_NAMES } from '$lib/utils/csv.js';
 	import SpecimenEditModal from './SpecimenEditModal.svelte';
@@ -42,6 +42,10 @@
 		let out = specimens;
 		if (country) out = out.filter((s) => s.country === country);
 		if (herbarium) out = out.filter((s) => s.institutionCode === herbarium);
+		// Species hidden via the map legend are removed app-wide (like the region
+		// polygon), so the Curate table drops their specimens too.
+		const hidden = $hiddenSpeciesStore;
+		if (hidden.size) out = out.filter((s) => !hidden.has(s.currentDetermination));
 		// Region polygon (drawn in Map mode): keep specimens inside it, plus — when
 		// includeUnlocatedStore is on (default) — no-coordinate specimens *of species that
 		// occur in the region*. The species gate (regionSpeciesKeys) mirrors the Browse
