@@ -49,7 +49,8 @@
 		if (!data || typeof data !== 'object') return;
 
 		if (data.type === 'zen-viewer:init') {
-			// Idempotent — a later click just swaps in another species' images.
+			// The opener matched our 'ready' to this window and replied with our own
+			// images (also after an F5, which re-runs the handshake).
 			images = Array.isArray(data.images) ? data.images : [];
 			speciesName = data.speciesName || '';
 			currentIndex = Math.min(Math.max(0, data.startIndex || 0), Math.max(0, images.length - 1));

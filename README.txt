@@ -45,8 +45,11 @@ QUICK START (Windows 11)
    image folder the same way. Each dataset remembers its own folder,
    so you only have to pick each one once.
 7. Species cards will populate with thumbnails. Click any thumbnail to
-   view the full image. Use the arrow keys in the lightbox to flip
-   through images; press Escape to close.
+   view the full image — it opens in a new browser tab. Use the arrow
+   keys to flip through that species' images, scroll to zoom, and press
+   Escape to close. Each thumbnail you click opens its own tab, so you
+   can open two specimens and compare them side by side (e.g. with
+   Chrome's split-screen).
    (The first scroll-through is slow — see FIRST USE IS SLOW below.)
 
 Each dataset's image-folder choice is remembered between sessions. If
