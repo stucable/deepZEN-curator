@@ -40,6 +40,21 @@ export const imageFileLatLng = derived(taxaStore, ($taxa) => {
 });
 
 /**
+ * Map of image-file basename → that specimen object, for every imaged specimen.
+ * A Browse thumbnail is keyed by its image-file basename, so this resolves the
+ * clicked thumbnail back to the specimen the edit window should open — and lets the
+ * "Find a specimen" filters narrow image-level. Built like typeStatusByImageFile.
+ */
+export const specimenByImageFile = derived(taxaStore, ($taxa) => {
+	const map = new Map();
+	if (!$taxa) return map;
+	for (const s of $taxa.specimensByCatalogue.values()) {
+		for (const file of s.imageFiles) map.set(file, s);
+	}
+	return map;
+});
+
+/**
  * Parsed identifications-log entries for the active dataset (the append-only
  * re-ID history overlaid on the base CSV at load). Empty array when no log file
  * is present. The curation edit modal reads this to show a specimen's ID history
@@ -97,7 +112,19 @@ export const filterStore = writable({
 	stipules: '',
 	exudate: '',
 	stemArmature: '',
-	tendrils: ''
+	tendrils: '',
+	// Specimen-level filters, applied via specimenSearchPredicate (not FILTER_FIELDS, so
+	// they stay out of the option-count machinery — like the free-text `search`). The Data
+	// view's toolbar controls (specimenSearch / country / herbarium) and its sidebar "Find a
+	// specimen" controls (collectorSeries / collectionNumber) all live here so they narrow
+	// the Browse grid, the Curate table, AND the Map in lock-step. `genus` (above) stays a
+	// species-level filter via FILTER_FIELDS; the Data genus dropdown reuses it.
+	collectorSeries: '',
+	collectionNumber: '',
+	typeStatus: '',
+	country: '',
+	herbarium: '',
+	specimenSearch: ''
 });
 
 /**
@@ -183,6 +210,69 @@ export const regionSpeciesKeys = derived(
 	([$taxa, $polygon]) => ($taxa ? speciesKeysInPolygon($taxa, $polygon) : null)
 );
 
+/** typeStatus sentinel: match any specimen that carries a type status at all. */
+export const TYPE_ANY = '__any__';
+
+/**
+ * The primary collector of a (possibly multi-collector) RecordedBy string: the name
+ * before the first ';' separator, trimmed. '' when empty. The single source of truth
+ * for a specimen's "collector series", used by both the predicate and its options.
+ * @param {string} recordedBy
+ */
+export function firstCollector(recordedBy) {
+	if (!recordedBy) return '';
+	const i = recordedBy.indexOf(';');
+	return (i === -1 ? recordedBy : recordedBy.slice(0, i)).trim();
+}
+
+/**
+ * Build a specimen-level predicate from the specimen-level filter fields. Returns null
+ * when none are active so callers can skip the work entirely. All active fields AND
+ * together. Specimen-level — deliberately separate from matchesField / FILTER_FIELDS
+ * (and thus the option-count machinery), like the free-text search — and shared by
+ * filteredSpecies, browseSpecies, the Curate table, AND the Map so all narrow in
+ * lock-step. (`genus` is not here — it stays a species-level FILTER_FIELDS filter.)
+ *   collectorSeries → substring on the primary collector (firstCollector)
+ *   collectionNumber → substring on recordNumber
+ *   country / herbarium → exact match on country / institutionCode
+ *   specimenSearch → OR-substring across the specimen's identity fields (the Data table
+ *                    search box's fields)
+ *   typeStatus → '' (off), TYPE_ANY (any type present), or an exact status
+ * @param {object} $filter - the current filterStore value
+ * @returns {((specimen: object) => boolean) | null}
+ */
+export function specimenSearchPredicate($filter) {
+	const series = $filter.collectorSeries?.trim().toLowerCase();
+	const collNo = $filter.collectionNumber?.trim().toLowerCase();
+	const country = $filter.country;
+	const herbarium = $filter.herbarium;
+	const query = $filter.specimenSearch?.trim().toLowerCase();
+	const type = $filter.typeStatus;
+	if (!series && !collNo && !country && !herbarium && !query && !type) return null;
+	return (sp) => {
+		if (!sp) return false;
+		if (series && !firstCollector(sp.recordedBy).toLowerCase().includes(series)) return false;
+		if (collNo && !sp.recordNumber.toLowerCase().includes(collNo)) return false;
+		if (country && sp.country !== country) return false;
+		if (herbarium && sp.institutionCode !== herbarium) return false;
+		if (query) {
+			const hit =
+				sp.catalogueNumber.toLowerCase().includes(query) ||
+				sp.currentDetermination.toLowerCase().includes(query) ||
+				sp.recordedBy.toLowerCase().includes(query) ||
+				sp.recordNumber.toLowerCase().includes(query) ||
+				sp.institutionCode.toLowerCase().includes(query);
+			if (!hit) return false;
+		}
+		if (type) {
+			if (type === TYPE_ANY) {
+				if (!sp.typeStatus) return false;
+			} else if (sp.typeStatus !== type) return false;
+		}
+		return true;
+	};
+}
+
 /**
  * Derived: species array filtered by current filter selection, sorted per the
  * active `sortStore` mode. Sources from one of three pre-sorted arrays built
@@ -199,8 +289,8 @@ export const regionSpeciesKeys = derived(
  * counts read `visibleSpecies` below, which subtracts the hidden set.
  */
 export const filteredSpecies = derived(
-	[taxaStore, filterStore, sortStore, regionSpeciesKeys],
-	([$taxa, $filter, $sort, $regionKeys]) => {
+	[taxaStore, filterStore, sortStore, regionSpeciesKeys, specimenByImageFile],
+	([$taxa, $filter, $sort, $regionKeys, $byImg]) => {
 		if (!$taxa) return [];
 
 		const source =
@@ -214,6 +304,14 @@ export const filteredSpecies = derived(
 		if (q) {
 			const tokens = q.split(/\s+/);
 			result = result.filter((s) => tokens.every((t) => s.searchText.includes(t)));
+		}
+
+		// "Find a specimen" (collector / collection no. / barcode / type) is specimen-
+		// level, so a species qualifies if any of its image sheets' specimens match.
+		// Kept out of applyFilters / the option-count machinery, like the search above.
+		const matchSpecimen = specimenSearchPredicate($filter);
+		if (matchSpecimen) {
+			result = result.filter((s) => s.images.some((f) => matchSpecimen($byImg.get(f))));
 		}
 
 		if (!$regionKeys) return result;
@@ -236,8 +334,10 @@ export const visibleSpecies = derived(
 
 /**
  * Derived: the species the Browse grid renders. Identical to `visibleSpecies`
- * unless a region polygon is active, in which case each species is cloned with its
- * `images` narrowed to the specimen sheets whose coordinates fall inside the polygon
+ * unless a region polygon and/or a "Find a specimen" filter is active, in which case
+ * each species is cloned with its `images` narrowed: the specimen-identity search keeps
+ * only matching sheets, and a region polygon keeps the specimen sheets whose
+ * coordinates fall inside the polygon
  * — plus, when `includeUnlocatedStore` is on (default), images of specimens that have
  * no coordinates at all. Species left with no images are dropped, so empty cards never
  * render. Kept separate on purpose: the map reads `filteredSpecies` (pre-hide) and the
@@ -246,15 +346,25 @@ export const visibleSpecies = derived(
  * only the grid applies this image-level narrowing.
  */
 export const browseSpecies = derived(
-	[visibleSpecies, selectionPolygonStore, includeUnlocatedStore, imageFileLatLng],
-	([$filtered, $polygon, $includeUnlocated, $latLng]) => {
-		if (!$polygon || $polygon.length < 3) return $filtered;
+	[visibleSpecies, selectionPolygonStore, includeUnlocatedStore, imageFileLatLng, filterStore, specimenByImageFile],
+	([$filtered, $polygon, $includeUnlocated, $latLng, $filter, $byImg]) => {
+		const hasPoly = $polygon && $polygon.length >= 3;
+		const matchSpecimen = specimenSearchPredicate($filter);
+		// Neither narrowing active → hand back the species list untouched.
+		if (!hasPoly && !matchSpecimen) return $filtered;
 
 		const out = [];
 		for (const s of $filtered) {
 			const images = s.images.filter((file) => {
-				const ll = $latLng.get(file);
-				return ll ? pointInRing(ll.lng, ll.lat, $polygon) : $includeUnlocated;
+				// Specimen-identity search narrows to the matching sheets…
+				if (matchSpecimen && !matchSpecimen($byImg.get(file))) return false;
+				// …and the region polygon narrows to in-region (or, when enabled,
+				// no-coordinate) sheets. Both apply when both are active.
+				if (hasPoly) {
+					const ll = $latLng.get(file);
+					return ll ? pointInRing(ll.lng, ll.lat, $polygon) : $includeUnlocated;
+				}
+				return true;
 			});
 			if (images.length) out.push({ ...s, images });
 		}
@@ -298,13 +408,17 @@ export const filteredSpeciesCounts = derived(visibleSpecies, ($fs) => {
 
 /**
  * Species keys (currentDetermination) that have at least one geolocated, in-bbox
- * specimen — i.e. that actually show a dot on the map. Species with no coordinates at
- * all, or whose only coordinates fall off-map (bad data), are excluded.
+ * specimen that also passes the active specimen-level filters — i.e. that actually
+ * show a dot on the map. Applying specimenSearchPredicate here (as MapView's plot does
+ * per point) keeps the sidebar's "Showing X of N" map count in step with the dots
+ * plotted. Species with no in-bbox matching specimen are excluded.
  */
-const mappedSpeciesKeys = derived(taxaStore, ($taxa) => {
+const mappedSpeciesKeys = derived([taxaStore, filterStore], ([$taxa, $filter]) => {
 	const keys = new Set();
 	if (!$taxa) return keys;
+	const matchSpecimen = specimenSearchPredicate($filter);
 	for (const s of $taxa.geolocatedSpecimens) {
+		if (matchSpecimen && !matchSpecimen(s)) continue;
 		if (inBbox(s.lng, s.lat)) keys.add(s.currentDetermination);
 	}
 	return keys;
@@ -376,6 +490,35 @@ export const vernacularOptions = derived(taxaStore, ($taxa) => {
 		if (sp.vernacularName) names.add(sp.vernacularName);
 	}
 	return [...names].sort((a, b) => a.localeCompare(b));
+});
+
+/**
+ * Derived: sorted, de-duplicated primary collectors in the current dataset (the name
+ * before the first ';' in each RecordedBy). Specimen-level — powers the "Find a
+ * specimen" Collector series typeahead.
+ */
+export const collectorSeriesOptions = derived(taxaStore, ($taxa) => {
+	if (!$taxa) return [];
+	const names = new Set();
+	for (const s of $taxa.specimensByCatalogue.values()) {
+		const c = firstCollector(s.recordedBy);
+		if (c) names.add(c);
+	}
+	return [...names].sort((a, b) => a.localeCompare(b));
+});
+
+/**
+ * Derived: sorted, de-duplicated type statuses (e.g. "holotype", "isotype") present
+ * in the current dataset. Specimen-level — powers the "Find a specimen" Type select.
+ * Empty when the dataset has no type specimens (the select then hides).
+ */
+export const typeStatusOptions = derived(taxaStore, ($taxa) => {
+	if (!$taxa) return [];
+	const set = new Set();
+	for (const s of $taxa.specimensByCatalogue.values()) {
+		if (s.typeStatus) set.add(s.typeStatus);
+	}
+	return [...set].sort((a, b) => a.localeCompare(b));
 });
 
 /**

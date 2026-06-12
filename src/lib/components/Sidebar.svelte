@@ -1,5 +1,5 @@
 <script>
-	import { taxaStore, taxaSourceStore, taxaSourceFilenameStore, csvLoadErrorStore, filterStore, determinedSpeciesCount, filteredSpeciesCounts, mapVisibleSpeciesCount, unidentifiedSpecimenCount, availableFamilies, availableGenera, vernacularOptions, filterOptionCounts, DEFAULT_HABITS } from '$lib/stores/taxa.js';
+	import { taxaStore, taxaSourceStore, taxaSourceFilenameStore, csvLoadErrorStore, filterStore, determinedSpeciesCount, filteredSpeciesCounts, mapVisibleSpeciesCount, unidentifiedSpecimenCount, availableFamilies, availableGenera, vernacularOptions, collectorSeriesOptions, typeStatusOptions, TYPE_ANY, filterOptionCounts, DEFAULT_HABITS } from '$lib/stores/taxa.js';
 	import { folderHandleStore, pendingFolderHandleStore, selectFolder, reconnectFolder } from '$lib/stores/folder.js';
 	import { currentDatasetStore } from '$lib/stores/dataset.js';
 	import { viewModeStore } from '$lib/stores/view.js';
@@ -55,7 +55,13 @@
 			stipules: '',
 			exudate: '',
 			stemArmature: '',
-			tendrils: ''
+			tendrils: '',
+			collectorSeries: '',
+			collectionNumber: '',
+			typeStatus: '',
+			country: '',
+			herbarium: '',
+			specimenSearch: ''
 		});
 	}
 
@@ -238,6 +244,75 @@
 			</button>
 		</div>
 	</div>
+	{/if}
+
+	<!-- Find a specimen — specimen-identity search. Specimen-level, so it narrows the
+	     Browse images, the Curate table, and the Map points alike. Shown in Browse + Data
+	     but NOT Map: in Map you set these from Browse/Data and the map mirrors the result. -->
+	{#if $taxaStore && $viewModeStore !== 'map'}
+	<hr class="border-gray-200 dark:border-gray-700" />
+
+	<h2 class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Find a specimen</h2>
+
+	<!-- Collector series — the primary collector (before the first ';' in RecordedBy) -->
+	<div>
+		<label for="collector-series-filter" class="mb-1 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+			Collector series
+		</label>
+		<input
+			id="collector-series-filter"
+			type="text"
+			list="collector-series-options"
+			value={$filterStore.collectorSeries}
+			oninput={handleTraitChange('collectorSeries')}
+			placeholder="Type to search…"
+			class="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+		/>
+		<datalist id="collector-series-options">
+			{#each $collectorSeriesOptions as name}
+				<option value={name}></option>
+			{/each}
+		</datalist>
+	</div>
+
+	<!-- Collection number (RecordNumber) — Data view only. Narrows within whatever the
+	     table search + collector series already selected (all filters AND together). -->
+	{#if $viewModeStore === 'curate'}
+		<div>
+			<label for="collno-filter" class="mb-1 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+				Collection number
+			</label>
+			<input
+				id="collno-filter"
+				type="text"
+				value={$filterStore.collectionNumber}
+				oninput={handleTraitChange('collectionNumber')}
+				placeholder="e.g. 1234"
+				class="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+			/>
+		</div>
+	{/if}
+
+	<!-- Type status -->
+	{#if $typeStatusOptions.length > 0}
+		<div>
+			<label for="type-filter" class="mb-1 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+				Type
+			</label>
+			<select
+				id="type-filter"
+				value={$filterStore.typeStatus}
+				onchange={handleTraitChange('typeStatus')}
+				class="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+			>
+				<option value="">All specimens</option>
+				<option value={TYPE_ANY}>Any type</option>
+				{#each $typeStatusOptions as t}
+					<option value={t}>{t}</option>
+				{/each}
+			</select>
+		</div>
+	{/if}
 	{/if}
 
 	{#if $viewModeStore === 'browse' || $viewModeStore === 'map'}

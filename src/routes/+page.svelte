@@ -12,12 +12,13 @@
 	import { currentDatasetStore, restoreDataset } from '$lib/stores/dataset.js';
 	import { restoreTheme } from '$lib/stores/theme.js';
 	import { restoreCuratorName } from '$lib/stores/curator.js';
-	import { viewModeStore } from '$lib/stores/view.js';
+	import { viewModeStore, editingSpecimenStore } from '$lib/stores/view.js';
 	import { clearSelection, showAllSpecies } from '$lib/stores/map.js';
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import SpeciesGrid from '$lib/components/SpeciesGrid.svelte';
 	import CurationView from '$lib/components/CurationView.svelte';
 	import MapView from '$lib/components/MapView.svelte';
+	import SpecimenEditModal from '$lib/components/SpecimenEditModal.svelte';
 
 	let loadedDatasetId = $state(null);
 	// False while restoreFolderHandle is in flight — gates CSV loading so we
@@ -75,7 +76,13 @@
 			stipules: '',
 			exudate: '',
 			stemArmature: '',
-			tendrils: ''
+			tendrils: '',
+			collectorSeries: '',
+			collectionNumber: '',
+			typeStatus: '',
+			country: '',
+			herbarium: '',
+			specimenSearch: ''
 		};
 	}
 
@@ -158,6 +165,7 @@
 			taxaSourceFilenameStore.set(null);
 			csvLoadErrorStore.set(null);
 			identificationLogStore.set([]);
+			editingSpecimenStore.set(null);
 			filterStore.set(defaultFilterState());
 			clearSelection();
 			showAllSpecies();
@@ -206,3 +214,9 @@
 		{/if}
 	</main>
 </div>
+
+<!-- Shared determination/edit window for Browse + Curate (Map mounts its own, with
+     map-placement props). Opened by setting editingSpecimenStore from any view. -->
+{#if $editingSpecimenStore}
+	<SpecimenEditModal specimen={$editingSpecimenStore} onClose={() => editingSpecimenStore.set(null)} />
+{/if}

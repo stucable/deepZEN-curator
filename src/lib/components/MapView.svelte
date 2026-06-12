@@ -1,5 +1,5 @@
 <script>
-	import { taxaStore, filteredSpecies } from '$lib/stores/taxa.js';
+	import { taxaStore, filteredSpecies, filterStore, specimenSearchPredicate } from '$lib/stores/taxa.js';
 	import { selectionPolygonStore, clearSelection, hiddenSpeciesStore, showAllSpecies } from '$lib/stores/map.js';
 	import { currentDatasetStore } from '$lib/stores/dataset.js';
 	import {
@@ -78,12 +78,17 @@
 			return { points: [], byCat: new Map(), legend: [], offMap: 0, tooMany: false, speciesCount: 0, missing: [] };
 
 		const filterKeys = new Set($filteredSpecies.map((s) => s.taxonomicName));
+		// Specimen-level filters (the Data table's selection + the Find-a-specimen filters)
+		// gate individual points, so the map mirrors exactly the specimens the Data table /
+		// Browse grid show — not just every point of a surviving species. Null when none active.
+		const matchSpecimen = specimenSearchPredicate($filterStore);
 
 		// Specimens to plot, grouped under their species key (currentDetermination).
 		const inView = [];
 		let offMap = 0;
 		for (const s of $taxaStore.geolocatedSpecimens) {
 			if (!filterKeys.has(s.currentDetermination)) continue;
+			if (matchSpecimen && !matchSpecimen(s)) continue;
 			if (!inBbox(s.lng, s.lat)) {
 				offMap++;
 				continue;
@@ -119,6 +124,7 @@
 		if (polygon && polygon.length >= 3) {
 			for (const s of $taxaStore.geolocatedSpecimens) {
 				if (!pointInRing(s.lng, s.lat, polygon)) continue;
+				if (matchSpecimen && !matchSpecimen(s)) continue;
 				mappedByKey.set(s.currentDetermination, (mappedByKey.get(s.currentDetermination) ?? 0) + 1);
 			}
 		} else {
