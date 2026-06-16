@@ -7,6 +7,12 @@
 
 	let { species } = $props();
 
+	// Shared style for the corner state badges (TYPE / LEAF / DNA). A dark-green chip —
+	// darker than the bright green tissue border (border-green-500) — so it stays legible
+	// against it without needing a separating outline.
+	const badgeClass =
+		'rounded bg-emerald-700 px-1 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white shadow';
+
 	function openViewer(index) {
 		openImageViewer({
 			images: species.images,
@@ -39,6 +45,7 @@
 
 	<div class="flex flex-wrap gap-2">
 		{#each species.images as cat, i}
+			{@const sp = $specimenByImageFile.get(cat)}
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div class="group relative" oncontextmenu={(e) => editSpecimen(cat, e)}>
 				<HerbariumImage
@@ -46,6 +53,8 @@
 					folderHandle={$folderHandleStore}
 					onclick={() => openViewer(i)}
 					isType={$typeStatusByImageFile.has(cat)}
+					isLeafSample={sp?.leafSample === 'yes'}
+					isDnaSequenced={sp?.dnaSequenced === 'yes'}
 				/>
 				{#if $folderHandleStore}
 					<button
@@ -60,13 +69,18 @@
 						</svg>
 					</button>
 				{/if}
-				{#if $typeStatusByImageFile.has(cat)}
-					<span
-						class="pointer-events-none absolute left-1 top-1 rounded bg-emerald-600/90 px-1 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white shadow"
-						title={$typeStatusByImageFile.get(cat)}
-					>
-						Type
-					</span>
+				{#if $typeStatusByImageFile.has(cat) || sp?.leafSample === 'yes' || sp?.dnaSequenced === 'yes'}
+					<div class="pointer-events-none absolute left-1 top-1 flex flex-col items-start gap-1">
+						{#if $typeStatusByImageFile.has(cat)}
+							<span class={badgeClass} title={$typeStatusByImageFile.get(cat)}>Type</span>
+						{/if}
+						{#if sp?.leafSample === 'yes'}
+							<span class={badgeClass} title="Leaf sample taken">Leaf</span>
+						{/if}
+						{#if sp?.dnaSequenced === 'yes'}
+							<span class={badgeClass} title="DNA sequenced">DNA</span>
+						{/if}
+					</div>
 				{/if}
 			</div>
 		{/each}

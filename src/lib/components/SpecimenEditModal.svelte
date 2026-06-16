@@ -35,6 +35,18 @@
 	// Herbarium of this identification (the determiner's institution). Seeded from
 	// the curator's saved default; editable per-ID and made sticky again on save.
 	let herbarium = $state(untrack(() => $curatorHerbariumStore));
+	// Identifier (Darwin Core Identifier) of this determination. Seeded from the
+	// sidebar curator name but editable per-ID, since an ID may be made by someone
+	// else. The saved-CSV *filename* owner stays the sidebar identity (see save()).
+	let identifier = $state(untrack(() => $curatorNameStore));
+	// Identification date — editable / backdatable; defaults to today (YYYY-MM-DD).
+	let identifiedOn = $state(new Date().toISOString().slice(0, 10));
+	// DNA-sampling workflow for this sheet. Checkboxes are booleans here, stored as
+	// 'yes' / '' (blank) on the specimen; the two text fields are free-form.
+	let leafSample = $state(seed.leafSample === 'yes');
+	let dnaExtraction = $state(seed.dnaExtraction);
+	let dnaSequenced = $state(seed.dnaSequenced === 'yes');
+	let dnaNotes = $state(seed.dnaNotes);
 
 	let saving = $state(false);
 	let errorMsg = $state(null);
@@ -107,17 +119,27 @@
 		const newDet = det.trim();
 		const remarksTrim = remarks.trim();
 		const herbariumTrim = herbarium.trim();
+		const identifierTrim = identifier.trim();
 		const detChanged = newDet !== '' && newDet !== specimen.currentDetermination;
 		// Log an identification when the name changes OR when there's a note to
 		// record against the current name (a re-affirming, note-only entry).
 		const logIdentification = detChanged || remarksTrim !== '';
+		// DNA-sampling fields, normalised to their stored form for change-detection.
+		const leafVal = leafSample ? 'yes' : '';
+		const dnaSequencedVal = dnaSequenced ? 'yes' : '';
+		const dnaExtractionTrim = dnaExtraction.trim();
+		const dnaNotesTrim = dnaNotes.trim();
 		const correctionChanged =
 			latVal !== specimen.lat ||
 			lngVal !== specimen.lng ||
 			country.trim() !== specimen.country ||
 			institutionCode.trim() !== specimen.institutionCode ||
 			recordedBy.trim() !== specimen.recordedBy ||
-			recordNumber.trim() !== specimen.recordNumber;
+			recordNumber.trim() !== specimen.recordNumber ||
+			leafVal !== specimen.leafSample ||
+			dnaExtractionTrim !== specimen.dnaExtraction ||
+			dnaSequencedVal !== specimen.dnaSequenced ||
+			dnaNotesTrim !== specimen.dnaNotes;
 
 		if (!logIdentification && !correctionChanged) {
 			onClose();
@@ -133,9 +155,9 @@
 				const entry = {
 					catalogueNumber: specimen.catalogueNumber,
 					scientificName,
-					identifier: user,
+					identifier: identifierTrim,
 					herbarium: herbariumTrim,
-					identificationDate: now,
+					identificationDate: identifiedOn || now.slice(0, 10),
 					remarks: remarksTrim
 				};
 				await appendIdentification(folder, ds, entry, { user });
@@ -154,6 +176,10 @@
 				specimen.institutionCode = institutionCode.trim();
 				specimen.recordedBy = recordedBy.trim();
 				specimen.recordNumber = recordNumber.trim();
+				specimen.leafSample = leafVal;
+				specimen.dnaExtraction = dnaExtractionTrim;
+				specimen.dnaSequenced = dnaSequencedVal;
+				specimen.dnaNotes = dnaNotesTrim;
 				specimen.editedAt = now;
 				await writeSpecimenOverride(folder, ds, $taxaStore.specimensByCatalogue, { user });
 			}
@@ -257,8 +283,19 @@
 				</div>
 
 				<div>
-					<label for="edit-herbarium" class={labelClass}>Determiner's herbarium</label>
-					<input id="edit-herbarium" type="text" bind:value={herbarium} placeholder="e.g. K" class={fieldClass} />
+					<label for="edit-identifier" class={labelClass}>Identified by</label>
+					<input id="edit-identifier" type="text" bind:value={identifier} placeholder="Your name, or who identified it" class={fieldClass} />
+				</div>
+
+				<div class="grid grid-cols-2 gap-3">
+					<div>
+						<label for="edit-herbarium" class={labelClass}>Determiner's herbarium</label>
+						<input id="edit-herbarium" type="text" bind:value={herbarium} placeholder="e.g. K" class={fieldClass} />
+					</div>
+					<div>
+						<label for="edit-identified-on" class={labelClass}>Identification date</label>
+						<input id="edit-identified-on" type="date" bind:value={identifiedOn} class={fieldClass} />
+					</div>
 				</div>
 
 				<div>
@@ -317,6 +354,30 @@
 				<div>
 					<label for="edit-collno" class={labelClass}>Collection number</label>
 					<input id="edit-collno" type="text" bind:value={recordNumber} class={fieldClass} />
+				</div>
+
+				<div class="mt-1 border-t border-gray-200 pt-3 dark:border-gray-700">
+					<h3 class="mb-2 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">DNA sampling</h3>
+					<div class="flex flex-wrap gap-x-6 gap-y-2">
+						<label class="flex cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+							<input type="checkbox" bind:checked={leafSample} class="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 dark:border-gray-600 dark:bg-gray-800" />
+							Leaf sample taken
+						</label>
+						<label class="flex cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+							<input type="checkbox" bind:checked={dnaSequenced} class="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 dark:border-gray-600 dark:bg-gray-800" />
+							DNA sequenced
+						</label>
+					</div>
+					<div class="mt-3 grid grid-cols-2 gap-3">
+						<div>
+							<label for="edit-dna-tube" class={labelClass}>DNA extraction (tube no.)</label>
+							<input id="edit-dna-tube" type="text" bind:value={dnaExtraction} placeholder="e.g. BT_015" class={fieldClass} />
+						</div>
+						<div>
+							<label for="edit-dna-notes" class={labelClass}>DNA notes</label>
+							<input id="edit-dna-notes" type="text" bind:value={dnaNotes} placeholder="e.g. sequence file, or 'degraded DNA'" class={fieldClass} />
+						</div>
+					</div>
 				</div>
 
 				{#if errorMsg}

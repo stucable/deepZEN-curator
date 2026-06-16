@@ -155,6 +155,23 @@ eq(reparsed.institutionCode, 'P', 'corrected holding herbarium persists through 
 eq(reparsed.editedAt, '2025-03-04T10:00:00.000Z', 'EditedAt stamp persists');
 eq(reparsed.taxonomicName, 'Macaranga alpina', 'untouched determination unchanged by a correction');
 
+// (d) DNA-sampling fields survive serialize → parse, and parseYesNo coerces yes/no cells.
+k1.leafSample = 'yes';
+k1.dnaExtraction = 'BT_015';
+k1.dnaSequenced = 'yes';
+k1.dnaNotes = 'degraded DNA';
+const reDna = parseSpeciesCsv(serializeSpecimensCsv(corrected)).specimensByCatalogue.get('K1');
+eq([reDna.leafSample, reDna.dnaExtraction, reDna.dnaSequenced, reDna.dnaNotes],
+	['yes', 'BT_015', 'yes', 'degraded DNA'], 'DNA-sampling fields persist through the override');
+// A shipped CSV with raw yes/no cells normalises through parseYesNo on read.
+const dnaCsv = [
+	'TaxonomicName,CatalogueNumber,LeafSample,DNAextracted,DNAsequenced,DNAnotes',
+	'Macaranga alpina,K9,Yes,BT_099,no,'
+].join('\r\n');
+const k9 = parseSpeciesCsv(dnaCsv).specimensByCatalogue.get('K9');
+eq([k9.leafSample, k9.dnaSequenced], ['yes', ''], 'parseYesNo: "Yes" → yes, "no" → "" (blank)');
+eq(k9.dnaExtraction, 'BT_099', 'DNAextracted tube number read from a shipped CSV');
+
 console.log('\n6. Holding herbarium (institutionCode) derivation + explicit column');
 // No InstitutionCode column → derived from the barcode prefix (K… = Kew).
 eq(parseSpeciesCsv(baseCsv).specimensByCatalogue.get('K1').institutionCode, 'K',

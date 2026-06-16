@@ -84,6 +84,9 @@ function parseCoord(raw, min, max) {
 export const parseLat = (raw) => parseCoord(raw, -90, 90);
 export const parseLng = (raw) => parseCoord(raw, -180, 180);
 
+/** Coerces a raw yes/no cell to 'yes' or '' (blank). Tolerates yes/y/true/1, any case. */
+export const parseYesNo = (raw) => (/^(yes|y|true|1)$/i.test(String(raw ?? '').trim()) ? 'yes' : '');
+
 /**
  * Splits an ImageFile cell into de-duplicated file basenames. A specimen carries
  * 0-2 images in one cell, separated by ';' (e.g. "K004152211; K004152211_a").
@@ -420,7 +423,14 @@ export function parseSpeciesCsv(text) {
 			// parity of the species view with the pre-Phase-B parser.
 			fullName: row.FullName?.trim() || '',
 			typeStatus: row.TypeStatus?.trim() || '',
-			typeName: row.TypeName?.trim() || ''
+			typeName: row.TypeName?.trim() || '',
+			// DNA-sampling workflow, per physical sheet. Like the type / editedAt fields
+			// above: lossless passthrough, kept off the species view and out of searchText
+			// so species-view parity with the pre-DNA parser holds.
+			leafSample: parseYesNo(row.LeafSample),
+			dnaExtraction: row.DNAextracted?.trim() || '',
+			dnaSequenced: parseYesNo(row.DNAsequenced),
+			dnaNotes: row.DNAnotes?.trim() || ''
 		});
 	}
 
@@ -458,7 +468,8 @@ const OVERRIDE_COLUMNS = [
 	'DecimalLatitude', 'DecimalLongitude', 'Locality', 'RecordedBy',
 	'RecordNumber', 'CollectionDate', 'Country', 'InstitutionCode',
 	'ImageFile', 'Habit', 'LeafArrangement', 'LeafForm', 'LeafVenation',
-	'LeafMargin', 'Stipules', 'Exudate', 'StemArmature', 'Tendrils', 'EditedAt'
+	'LeafMargin', 'Stipules', 'Exudate', 'StemArmature', 'Tendrils',
+	'LeafSample', 'DNAextracted', 'DNAsequenced', 'DNAnotes', 'EditedAt'
 ];
 
 /**
@@ -507,6 +518,10 @@ export function serializeSpecimensCsv(specimensByCatalogue) {
 			Exudate: s.traits.exudate,
 			StemArmature: s.traits.stemArmature,
 			Tendrils: s.traits.tendrils,
+			LeafSample: s.leafSample,
+			DNAextracted: s.dnaExtraction,
+			DNAsequenced: s.dnaSequenced,
+			DNAnotes: s.dnaNotes,
 			EditedAt: s.editedAt
 		});
 	}

@@ -186,6 +186,10 @@
 							<th class="px-3 py-2 font-semibold">Collector</th>
 							<th class="px-3 py-2 font-semibold">Coll. no.</th>
 							<th class="px-3 py-2 font-semibold">Coordinates</th>
+							<th class="px-3 py-2 font-semibold">Leaf</th>
+							<th class="px-3 py-2 font-semibold">DNA tube</th>
+							<th class="px-3 py-2 font-semibold">Seq</th>
+							<th class="px-3 py-2 font-semibold">DNA notes</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -218,6 +222,14 @@
 								<td class="max-w-xs truncate px-3 py-2 text-gray-600 dark:text-gray-400" title={s.recordedBy}>{dash(s.recordedBy)}</td>
 								<td class="px-3 py-2 whitespace-nowrap text-gray-600 dark:text-gray-400">{dash(s.recordNumber)}</td>
 								<td class="px-3 py-2 whitespace-nowrap text-gray-600 dark:text-gray-400">{coords(s)}</td>
+								<td class="px-3 py-2 text-center">
+									{#if s.leafSample === 'yes'}<span class="text-emerald-600 dark:text-emerald-400">✓</span>{:else}<span class="text-gray-400 dark:text-gray-500">—</span>{/if}
+								</td>
+								<td class="px-3 py-2 whitespace-nowrap font-mono text-xs text-gray-600 dark:text-gray-400">{dash(s.dnaExtraction)}</td>
+								<td class="px-3 py-2 text-center">
+									{#if s.dnaSequenced === 'yes'}<span class="text-emerald-600 dark:text-emerald-400">✓</span>{:else}<span class="text-gray-400 dark:text-gray-500">—</span>{/if}
+								</td>
+								<td class="max-w-xs truncate px-3 py-2 text-gray-600 dark:text-gray-400" title={s.dnaNotes}>{dash(s.dnaNotes)}</td>
 							</tr>
 						{/each}
 					</tbody>

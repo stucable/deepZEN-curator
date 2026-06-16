@@ -3,7 +3,23 @@
 	import { currentDatasetStore } from '$lib/stores/dataset.js';
 	import { loadThumbnail } from '$lib/utils/thumbnails.js';
 
-	let { catalogueNumber, folderHandle = null, onclick = () => {}, isType = false } = $props();
+	let {
+		catalogueNumber, folderHandle = null, onclick = () => {},
+		isType = false, isLeafSample = false, isDnaSequenced = false
+	} = $props();
+
+	// Single border whose colour reports the most-advanced state of this sheet, by
+	// precedence: DNA sequenced (purple) → leaf sample taken (green) → type (red) →
+	// none (thin gray). The DNA stages are sequential (sequenced implies a sample was
+	// taken), so the further state simply wins rather than stacking. Type specimens
+	// aren't sampled in practice, so type rarely competes; type-ness also shows via
+	// the corner "Type" badge in SpeciesCard regardless of border colour.
+	const borderClass = $derived(
+		isDnaSequenced ? 'border-[6px] border-purple-500 dark:border-purple-500'
+		: isLeafSample ? 'border-[6px] border-green-500 dark:border-green-500'
+		: isType       ? 'border-[6px] border-red-500 dark:border-red-500'
+		:                'border border-gray-200 dark:border-gray-700'
+	);
 
 	let imgSrc = $state(null);
 	let error = $state(false);
@@ -86,7 +102,7 @@
 <button
 	bind:this={containerEl}
 	type="button"
-	class="relative h-48 w-48 shrink-0 cursor-pointer overflow-hidden rounded bg-gray-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none dark:bg-gray-800 {isType ? 'border-4 border-red-500 dark:border-red-500' : 'border border-gray-200 dark:border-gray-700'}"
+	class="relative h-48 w-48 shrink-0 cursor-pointer overflow-hidden rounded bg-gray-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none dark:bg-gray-800 {borderClass}"
 	onclick={onclick}
 	aria-label="View {catalogueNumber}"
 	aria-busy={loading}
