@@ -315,8 +315,9 @@
 	{/if}
 	{/if}
 
-	{#if $viewModeStore === 'browse' || $viewModeStore === 'map'}
-	<!-- Filters drive both the grid and which species the map plots -->
+	{#if $taxaStore}
+	<!-- Filters drive all three views in lock-step: the Browse grid, which species the map
+	     plots, AND the Curate table (gated by speciesFilterKeys). Shown in every view. -->
 	<hr class="border-gray-200 dark:border-gray-700" />
 
 	<h2 class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Filters</h2>
