@@ -1,25 +1,26 @@
 <script>
-	import { taxaStore, regionSpeciesKeys, filterStore, specimenSearchPredicate } from '$lib/stores/taxa.js';
+	import { taxaStore, regionSpeciesKeys, filterStore, speciesFilterKeys, specimenSearchPredicate } from '$lib/stores/taxa.js';
 	import { selectionPolygonStore, includeUnlocatedStore, hiddenSpeciesStore } from '$lib/stores/map.js';
 	import { editingSpecimenStore } from '$lib/stores/view.js';
 	import { pointInRing } from '$lib/utils/geo.js';
 	import { INSTITUTION_NAMES } from '$lib/utils/csv.js';
 
 	// Every control that narrows this table lives in the shared filterStore, so the Browse
-	// grid, this table, and the Map narrow in lock-step (the Map mirrors the table's
-	// selection). `genus` is the species-level filterStore.genus; specimenSearch / country /
-	// herbarium are specimen-level, applied (with collector series / collection no. / type)
-	// via specimenSearchPredicate. handleFilter writes a field from an input/select event.
+	// grid, this table, and the Map narrow in lock-step. The species-level taxonomy/habit/
+	// trait filters + free-text search are applied via speciesFilterKeys (the same set
+	// `filteredSpecies` uses); specimenSearch / country / herbarium are specimen-level,
+	// applied (with collector series / collection no. / type) via specimenSearchPredicate.
+	// handleFilter writes a field from an input/select event.
 	const handleFilter = (field) => (e) => filterStore.update((f) => ({ ...f, [field]: e.target.value }));
 
-	// Reset everything that narrows this table. Region and hidden-species have their own
-	// dedicated clears (like the Browse "Clear filters", which also leaves them be).
+	// Reset the specimen-level toolbar filters this view owns. The species-level taxonomy
+	// filters (incl. genus) and habit pills are reset by the sidebar's own "Clear filters";
+	// region and hidden-species have their own dedicated clears.
 	function clearFilters() {
 		filterStore.update((f) => ({
 			...f,
 			specimenSearch: '',
 			country: '',
-			genus: '',
 			herbarium: '',
 			collectorSeries: '',
 			collectionNumber: '',
@@ -41,12 +42,6 @@
 		[...new Set(specimens.map((s) => s.country).filter(Boolean))].sort((a, b) => a.localeCompare(b))
 	);
 
-	// Genus options — specimen-level, like Country. A quick taxonomic narrow for the
-	// table; the sidebar's species-level Genus filter only applies in Browse/Map.
-	const genusOptions = $derived(
-		[...new Set(specimens.map((s) => s.genus).filter(Boolean))].sort((a, b) => a.localeCompare(b))
-	);
-
 	// Holding herbarium (institution) options — specimen-level, like Country. The
 	// filter only appears once the dataset spans more than one herbarium.
 	const herbariumOptions = $derived(
@@ -57,9 +52,12 @@
 
 	const rows = $derived.by(() => {
 		let out = specimens;
-		// Genus is a species-level filter (shared filterStore.genus); each specimen carries
-		// its genus, so apply it directly here.
-		if ($filterStore.genus) out = out.filter((s) => s.genus === $filterStore.genus);
+		// Species-level gate: keep only specimens whose species passes the shared sidebar
+		// taxonomy/habit/trait filters + free-text search (genus, family, order, clade,
+		// vernacular, habit, leaf/stem traits, Search). The same set `filteredSpecies` uses,
+		// so the Images grid, this table, and the Map admit the same species.
+		const speciesKeys = $speciesFilterKeys;
+		if (speciesKeys) out = out.filter((s) => speciesKeys.has(s.currentDetermination));
 		// Species hidden via the map legend are removed app-wide (like the region
 		// polygon), so the Curate table drops their specimens too.
 		const hidden = $hiddenSpeciesStore;
@@ -126,19 +124,6 @@
 					<option value="">All countries</option>
 					{#each countryOptions as c}
 						<option value={c}>{c}</option>
-					{/each}
-				</select>
-			{/if}
-			{#if genusOptions.length > 1}
-				<select
-					value={$filterStore.genus}
-					onchange={handleFilter('genus')}
-					class="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-					aria-label="Filter by genus"
-				>
-					<option value="">All genera</option>
-					{#each genusOptions as g}
-						<option value={g}>{g}</option>
 					{/each}
 				</select>
 			{/if}

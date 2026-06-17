@@ -274,15 +274,32 @@ export function specimenSearchPredicate($filter) {
 }
 
 /**
+ * Apply the species-level sidebar filters to a species array: the FILTER_FIELDS
+ * dropdowns/pills (via applyFilters) plus the free-text Search box (substring match
+ * over the precomputed `searchText`, AND across whitespace-separated tokens). Search
+ * is kept here rather than in `matchesField`/`FILTER_FIELDS` so it stays out of the
+ * option-count machinery — the dropdown "(N)" labels keep counting only the dropdown
+ * filters. Deliberately excludes the specimen-level predicate and the region polygon.
+ * Shared by `filteredSpecies` and `speciesFilterKeys` so the Browse grid, the Map, and
+ * the Curate table all admit exactly the same species.
+ */
+function filterSpeciesArray(speciesArr, $filter) {
+	let result = applyFilters(speciesArr, $filter);
+	const q = $filter.search?.trim().toLowerCase();
+	if (q) {
+		const tokens = q.split(/\s+/);
+		result = result.filter((s) => tokens.every((t) => s.searchText.includes(t)));
+	}
+	return result;
+}
+
+/**
  * Derived: species array filtered by current filter selection, sorted per the
  * active `sortStore` mode. Sources from one of three pre-sorted arrays built
  * at parse time; Array.filter preserves order so no runtime sort is needed.
- * A free-text search (substring match over the precomputed `searchText`, AND
- * across whitespace-separated tokens) narrows further. A map polygon, when drawn,
- * narrows the result to species occurring in that region (a species with no
- * geolocated specimen inside is dropped). Search is applied here rather than via
- * `matchesField`/`FILTER_FIELDS` so it stays out of the option-count machinery —
- * the dropdown "(N)" labels keep counting only the dropdown filters.
+ * A free-text search narrows further. A map polygon, when drawn, narrows the result
+ * to species occurring in that region (a species with no geolocated specimen inside
+ * is dropped).
  *
  * This is the *pre-hide* set: the map legend reads it directly so it can list (greyed)
  * and restore species the user hid via the legend. The Browse grid and the sidebar
@@ -298,17 +315,11 @@ export const filteredSpecies = derived(
 			$sort === 'family' ? $taxa.sortedByFamily :
 			$taxa.sortedByOrder;
 
-		let result = applyFilters(source, $filter);
-
-		const q = $filter.search?.trim().toLowerCase();
-		if (q) {
-			const tokens = q.split(/\s+/);
-			result = result.filter((s) => tokens.every((t) => s.searchText.includes(t)));
-		}
+		let result = filterSpeciesArray(source, $filter);
 
 		// "Find a specimen" (collector / collection no. / barcode / type) is specimen-
 		// level, so a species qualifies if any of its image sheets' specimens match.
-		// Kept out of applyFilters / the option-count machinery, like the search above.
+		// Kept out of filterSpeciesArray / the option-count machinery, like the search.
 		const matchSpecimen = specimenSearchPredicate($filter);
 		if (matchSpecimen) {
 			result = result.filter((s) => s.images.some((f) => matchSpecimen($byImg.get(f))));
@@ -317,6 +328,24 @@ export const filteredSpecies = derived(
 		if (!$regionKeys) return result;
 		return result.filter((s) => $regionKeys.has(s.taxonomicName));
 	}
+);
+
+/**
+ * Derived: the set of species keys (taxonomicName == the specimen's currentDetermination,
+ * per buildSpeciesView's grouping) that pass the species-level sidebar filters — the
+ * FILTER_FIELDS taxonomy/trait dropdowns + habit pills + the free-text Search box. Returns
+ * null only before data loads. Deliberately excludes the specimen-level predicate and the
+ * region polygon: the Curate table (like the Browse grid and the Map) applies those per
+ * item, so gating its specimen rows by this set makes the Images and Data views admit the
+ * same species. Note the `habits` default (`tree`+`shrub`) means this is normally a proper
+ * subset — that woody-plant default now applies in Data too, in lock-step with Browse.
+ */
+export const speciesFilterKeys = derived(
+	[taxaStore, filterStore],
+	([$taxa, $filter]) =>
+		$taxa
+			? new Set(filterSpeciesArray(Object.values($taxa.speciesByName), $filter).map((s) => s.taxonomicName))
+			: null
 );
 
 /**
