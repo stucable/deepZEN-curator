@@ -124,6 +124,8 @@ export const filterStore = writable({
 	typeStatus: '',
 	country: '',
 	herbarium: '',
+	leafSample: '',
+	dnaSequenced: '',
 	specimenSearch: ''
 });
 
@@ -235,6 +237,7 @@ export function firstCollector(recordedBy) {
  *   collectorSeries → substring on the primary collector (firstCollector)
  *   collectionNumber → substring on recordNumber
  *   country / herbarium → exact match on country / institutionCode
+ *   leafSample / dnaSequenced → '' (off), 'yes' (sampled/sequenced), 'no' (not)
  *   specimenSearch → OR-substring across the specimen's identity fields (the Data table
  *                    search box's fields)
  *   typeStatus → '' (off), TYPE_ANY (any type present), or an exact status
@@ -246,15 +249,19 @@ export function specimenSearchPredicate($filter) {
 	const collNo = $filter.collectionNumber?.trim().toLowerCase();
 	const country = $filter.country;
 	const herbarium = $filter.herbarium;
+	const leafSample = $filter.leafSample;
+	const sequenced = $filter.dnaSequenced;
 	const query = $filter.specimenSearch?.trim().toLowerCase();
 	const type = $filter.typeStatus;
-	if (!series && !collNo && !country && !herbarium && !query && !type) return null;
+	if (!series && !collNo && !country && !herbarium && !leafSample && !sequenced && !query && !type) return null;
 	return (sp) => {
 		if (!sp) return false;
 		if (series && !firstCollector(sp.recordedBy).toLowerCase().includes(series)) return false;
 		if (collNo && !sp.recordNumber.toLowerCase().includes(collNo)) return false;
 		if (country && sp.country !== country) return false;
 		if (herbarium && sp.institutionCode !== herbarium) return false;
+		if (leafSample && (leafSample === 'yes') !== (sp.leafSample === 'yes')) return false;
+		if (sequenced && (sequenced === 'yes') !== (sp.dnaSequenced === 'yes')) return false;
 		if (query) {
 			const hit =
 				sp.catalogueNumber.toLowerCase().includes(query) ||

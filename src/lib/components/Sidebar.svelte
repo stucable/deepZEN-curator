@@ -1,5 +1,5 @@
 <script>
-	import { taxaStore, taxaSourceStore, taxaSourceFilenameStore, csvLoadErrorStore, filterStore, determinedSpeciesCount, filteredSpeciesCounts, mapVisibleSpeciesCount, unidentifiedSpecimenCount, availableFamilies, availableGenera, vernacularOptions, collectorSeriesOptions, typeStatusOptions, TYPE_ANY, filterOptionCounts, DEFAULT_HABITS } from '$lib/stores/taxa.js';
+	import { taxaStore, taxaSourceStore, taxaSourceFilenameStore, csvLoadErrorStore, filterStore, determinedSpeciesCount, filteredSpeciesCounts, mapVisibleSpeciesCount, unidentifiedSpecimenCount, availableFamilies, availableGenera, vernacularOptions, collectorSeriesOptions, filterOptionCounts, DEFAULT_HABITS } from '$lib/stores/taxa.js';
 	import { folderHandleStore, pendingFolderHandleStore, selectFolder, reconnectFolder } from '$lib/stores/folder.js';
 	import { currentDatasetStore } from '$lib/stores/dataset.js';
 	import { viewModeStore } from '$lib/stores/view.js';
@@ -61,6 +61,8 @@
 			typeStatus: '',
 			country: '',
 			herbarium: '',
+			leafSample: '',
+			dnaSequenced: '',
 			specimenSearch: ''
 		});
 	}
@@ -131,12 +133,14 @@
 				{$folderHandleStore.name}
 			</div>
 			{#if $taxaSourceStore === 'custom'}
-				<div class="mt-0.5 pl-3 text-xs text-emerald-700 dark:text-emerald-400">
-					Using <code class="font-mono break-all">{$taxaSourceFilenameStore}</code> from this folder
+				<div class="mt-0.5 flex items-start gap-1 text-xs text-emerald-700 dark:text-emerald-400">
+					<span class="mt-1 inline-block h-2 w-2 shrink-0 rounded-full bg-emerald-500"></span>
+					<span>Using <code class="font-mono break-all">{$taxaSourceFilenameStore}</code> from this folder</span>
 				</div>
 			{:else if $taxaSourceStore === 'shipped'}
-				<div class="mt-0.5 pl-3 text-xs text-gray-500 dark:text-gray-400">
-					Using shipped data
+				<div class="mt-0.5 flex items-start gap-1 text-xs text-gray-500 dark:text-gray-400">
+					<span class="mt-1 inline-block h-2 w-2 shrink-0 rounded-full bg-gray-400"></span>
+					<span>Using shipped data</span>
 				</div>
 			{/if}
 		{:else}
@@ -166,7 +170,7 @@
 				class="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
 			/>
 			<p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
-				Tags your re-identifications and names your saved CSV files.
+				Tags your identifications and CSV files.
 			</p>
 
 			<label for="curator-herbarium" class="mt-3 mb-1 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
@@ -180,7 +184,7 @@
 				class="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
 			/>
 			<p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
-				Pre-fills the herbarium on each identification you record.
+				Tags your identifications to your herbarium.
 			</p>
 		</div>
 	{/if}
@@ -293,26 +297,6 @@
 		</div>
 	{/if}
 
-	<!-- Type status -->
-	{#if $typeStatusOptions.length > 0}
-		<div>
-			<label for="type-filter" class="mb-1 block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
-				Type
-			</label>
-			<select
-				id="type-filter"
-				value={$filterStore.typeStatus}
-				onchange={handleTraitChange('typeStatus')}
-				class="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-			>
-				<option value="">All specimens</option>
-				<option value={TYPE_ANY}>Any type</option>
-				{#each $typeStatusOptions as t}
-					<option value={t}>{t}</option>
-				{/each}
-			</select>
-		</div>
-	{/if}
 	{/if}
 
 	{#if $taxaStore}

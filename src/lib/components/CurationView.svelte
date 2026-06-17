@@ -1,5 +1,5 @@
 <script>
-	import { taxaStore, regionSpeciesKeys, filterStore, speciesFilterKeys, specimenSearchPredicate } from '$lib/stores/taxa.js';
+	import { taxaStore, regionSpeciesKeys, filterStore, speciesFilterKeys, specimenSearchPredicate, typeStatusOptions, TYPE_ANY } from '$lib/stores/taxa.js';
 	import { selectionPolygonStore, includeUnlocatedStore, hiddenSpeciesStore } from '$lib/stores/map.js';
 	import { editingSpecimenStore } from '$lib/stores/view.js';
 	import { pointInRing } from '$lib/utils/geo.js';
@@ -22,6 +22,8 @@
 			specimenSearch: '',
 			country: '',
 			herbarium: '',
+			leafSample: '',
+			dnaSequenced: '',
 			collectorSeries: '',
 			collectionNumber: '',
 			typeStatus: ''
@@ -114,6 +116,20 @@
 				class="min-w-64 max-w-xl flex-1 rounded border border-gray-300 bg-white px-3 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
 				aria-label="Search specimens"
 			/>
+			{#if $typeStatusOptions.length > 0}
+				<select
+					value={$filterStore.typeStatus}
+					onchange={handleFilter('typeStatus')}
+					class="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+					aria-label="Filter by type status"
+				>
+					<option value="">All specimens</option>
+					<option value={TYPE_ANY}>Any type</option>
+					{#each $typeStatusOptions as t}
+						<option value={t}>{t}</option>
+					{/each}
+				</select>
+			{/if}
 			{#if countryOptions.length > 1}
 				<select
 					value={$filterStore.country}
@@ -140,6 +156,26 @@
 					{/each}
 				</select>
 			{/if}
+			<select
+				value={$filterStore.leafSample}
+				onchange={handleFilter('leafSample')}
+				class="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+				aria-label="Filter by leaf sample"
+			>
+				<option value="">All sampled</option>
+				<option value="yes">Leaf sampled</option>
+				<option value="no">Not sampled</option>
+			</select>
+			<select
+				value={$filterStore.dnaSequenced}
+				onchange={handleFilter('dnaSequenced')}
+				class="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+				aria-label="Filter by sequencing status"
+			>
+				<option value="">All sequenced</option>
+				<option value="yes">Sequenced</option>
+				<option value="no">Not sequenced</option>
+			</select>
 			<button
 				onclick={clearFilters}
 				class="cursor-pointer rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
