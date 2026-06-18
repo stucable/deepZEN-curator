@@ -1,9 +1,8 @@
 <script>
-	import { taxaStore, filteredSpecies, filterStore, specimenSearchPredicate } from '$lib/stores/taxa.js';
-	import { selectionPolygonStore, clearSelection, hiddenSpeciesStore, showAllSpecies } from '$lib/stores/map.js';
+	import { taxaStore, filteredSpecies, filterStore, specimenSearchPredicate, effectiveMapExtent, activeMapBbox } from '$lib/stores/taxa.js';
+	import { selectionPolygonStore, clearSelection, hiddenSpeciesStore, showAllSpecies, mapExtentStore } from '$lib/stores/map.js';
 	import { currentDatasetStore } from '$lib/stores/dataset.js';
 	import {
-		MADAGASCAR_BBOX,
 		projectedExtent,
 		projectLngLat,
 		unprojectXY,
@@ -12,6 +11,8 @@
 	} from '$lib/utils/geo.js';
 	import { MADAGASCAR_OUTLINE } from '$lib/data/madagascar.js';
 	import { MADAGASCAR_BIOMES } from '$lib/data/madagascar-biomes.js';
+	import { WIO_OUTLINE } from '$lib/data/wio.js';
+	import { WORLD_OUTLINE } from '$lib/data/world.js';
 	import { colourForIndex, PALETTE_SIZE } from '$lib/utils/palette.js';
 	import { isUndetermined } from '$lib/utils/csv.js';
 	import SpecimenEditModal from './SpecimenEditModal.svelte';
@@ -22,12 +23,32 @@
 	// determined species get the distinct colours (a botanist's to-identify dots).
 	const UNDETERMINED_COLOUR = '#9ca3af';
 
-	// Projection extent is constant — the viewBox starts framing the whole island
-	// and is then mutated by zoom/pan. y grows downward (SVG convention).
-	const ext = projectedExtent();
-	const base = { x: 0, y: 0, w: ext.width, h: ext.height };
-	let viewBox = $state({ ...base });
+	// The active extent (auto-detected from the data, or chosen via the toolbar) drives the
+	// projection bbox, the basemap outline, and whether biomes show. The viewBox frames the
+	// active extent and is then mutated by zoom/pan; y grows downward (SVG convention).
+	const extentId = $derived($effectiveMapExtent);
+	const activeBbox = $derived($activeMapBbox);
+	const isMad = $derived(extentId === 'madagascar');
+
+	const ext = $derived(projectedExtent(activeBbox));
+	const base = $derived({ x: 0, y: 0, w: ext.width, h: ext.height });
+	let viewBox = $state({ ...projectedExtentToBox($activeMapBbox) });
 	const viewBoxStr = $derived(`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`);
+
+	function projectedExtentToBox(bbox) {
+		const e = projectedExtent(bbox);
+		return { x: 0, y: 0, w: e.width, h: e.height };
+	}
+
+	// Reframe to the full extent whenever the dataset or the chosen extent changes.
+	let lastViewKey;
+	$effect(() => {
+		const key = `${$currentDatasetStore?.id}:${extentId}`;
+		if (key !== lastViewKey) {
+			lastViewKey = key;
+			viewBox = { ...base };
+		}
+	});
 
 	// User-adjustable multiplier (toolbar slider) on the occurrence-point size.
 	let pointScale = $state(1);
@@ -42,13 +63,13 @@
 	// Project a set of [lng,lat] rings into a single SVG path (rings concatenated,
 	// each closed). Shared by the coastline outline and every biome polygon so they
 	// all live in the same projected space as the points.
-	function ringsToPath(rings) {
+	function ringsToPath(rings, bbox) {
 		return rings
 			.map(
 				(ring) =>
 					ring
 						.map(([lng, lat], i) => {
-							const { x, y } = projectLngLat(lng, lat);
+							const { x, y } = projectLngLat(lng, lat, bbox);
 							return `${i === 0 ? 'M' : 'L'}${x.toFixed(4)} ${y.toFixed(4)}`;
 						})
 						.join(' ') + ' Z'
@@ -56,11 +77,23 @@
 			.join(' ');
 	}
 
-	const outlinePath = ringsToPath(MADAGASCAR_OUTLINE.rings);
-	// Pre-project each biome's polygons once (static data → computed at module init).
-	const biomePaths = MADAGASCAR_BIOMES.map((b) => ({ ...b, d: ringsToPath(b.rings) }));
+	// Basemap outline for the active extent; biomes only exist for Madagascar.
+	const outline = $derived(
+		extentId === 'global' ? WORLD_OUTLINE : extentId === 'wio' ? WIO_OUTLINE : MADAGASCAR_OUTLINE
+	);
+	const outlinePath = $derived(ringsToPath(outline.rings, activeBbox));
+	const biomePaths = $derived(
+		isMad ? MADAGASCAR_BIOMES.map((b) => ({ ...b, d: ringsToPath(b.rings, activeBbox) })) : []
+	);
 	// Habitat (biome) layer visibility — view-only session state, like pointScale.
 	let showBiomes = $state(true);
+	// Colour points by species (default) or clade. Clade needs a populated Clade column.
+	let colourMode = $state('species');
+	const hasCladeData = $derived(!!$taxaStore && $taxaStore.geolocatedSpecimens.some((s) => s.clade));
+	// A dataset with no clade data (e.g. Macaranga) can't colour by clade — fall back.
+	$effect(() => {
+		if (colourMode === 'clade' && !hasCladeData) colourMode = 'species';
+	});
 
 	// Split a taxon name at an infraspecific rank ("var." / "subsp." / "ssp.") so the
 	// legend can force a line break before it: line 1 = binomial, line 2 = the rank +
@@ -75,7 +108,7 @@
 	// colour assigned to each, the projected points, and how many fell off-map.
 	const plot = $derived.by(() => {
 		if (!$taxaStore)
-			return { points: [], byCat: new Map(), legend: [], offMap: 0, tooMany: false, speciesCount: 0, missing: [] };
+			return { points: [], byCat: new Map(), legend: [], offMap: 0, tooMany: false, speciesCount: 0, missing: [], keyKind: colourMode };
 
 		const filterKeys = new Set($filteredSpecies.map((s) => s.taxonomicName));
 		// Specimen-level filters (the Data table's selection + the Find-a-specimen filters)
@@ -83,53 +116,72 @@
 		// Browse grid show — not just every point of a surviving species. Null when none active.
 		const matchSpecimen = specimenSearchPredicate($filterStore);
 
-		// Specimens to plot, grouped under their species key (currentDetermination).
+		// `keyOf` is the colour/legend grouping key — the species (currentDetermination) by
+		// default, or the clade when colouring by clade. Species filtering still gates which
+		// specimens appear; only the colour grouping changes. `isGrey` marks the single grey
+		// pile: undetermined species, or the unassigned-clade ('') bucket.
+		const byClade = colourMode === 'clade';
+		const keyOf = byClade ? (s) => s.clade || '' : (s) => s.currentDetermination;
+		const isGrey = byClade ? (k) => k === '' : (k) => isUndetermined(k);
+
 		const inView = [];
 		let offMap = 0;
 		for (const s of $taxaStore.geolocatedSpecimens) {
 			if (!filterKeys.has(s.currentDetermination)) continue;
 			if (matchSpecimen && !matchSpecimen(s)) continue;
-			if (!inBbox(s.lng, s.lat)) {
+			if (!inBbox(s.lng, s.lat, activeBbox)) {
 				offMap++;
 				continue;
 			}
 			inView.push(s);
 		}
 
-		// Species that actually have a point, in the filtered sort order, so the
-		// legend is dense (no colours wasted on point-less species). The undetermined
-		// "… sp." pile is split out: it gets a single grey, and only determined species
-		// consume palette slots — so 16 determined + an undetermined group still all
-		// colour distinctly instead of tripping the >16 fallback.
-		const present = new Set(inView.map((s) => s.currentDetermination));
-		const orderedKeys = $filteredSpecies
-			.map((s) => s.taxonomicName)
-			.filter((k) => present.has(k));
-		const determinedKeys = orderedKeys.filter((k) => !isUndetermined(k));
-		const undetKeys = orderedKeys.filter((k) => isUndetermined(k));
+		// Keys that actually have a point, in the filtered sort order so the legend is dense
+		// and grouped. The grey pile consumes no palette slot, so a full palette of coloured
+		// keys plus a grey group still colour distinctly instead of tripping the >16 fallback.
+		const present = new Set(inView.map(keyOf));
+		const orderSource = byClade
+			? $filteredSpecies.map((s) => s.clade || '')
+			: $filteredSpecies.map((s) => s.taxonomicName);
+		const ordered = [];
+		const seen = new Set();
+		for (const k of orderSource) {
+			if (present.has(k) && !seen.has(k)) {
+				seen.add(k);
+				ordered.push(k);
+			}
+		}
+		for (const k of present) if (!seen.has(k)) ordered.push(k); // defensive: any key the order missed
+		const determinedKeys = ordered.filter((k) => !isGrey(k));
+		const greyKeys = ordered.filter((k) => isGrey(k));
 
-		// Per-species "(mapped / total)" tallies for the legend.
-		//  total — every barcoded specimen of the species in the dataset (skips the
-		//          barcode-less name placeholders, matching the geolocatedSpecimens basis).
-		//  mapped — specimens shown on the map: in-bbox plotted points normally, or, when a
+		// "(mapped / total)" tallies, keyed like the colour key.
+		//  total — every barcoded specimen under the key (skips the barcode-less placeholders).
+		//  mapped — specimens shown on the map: in-extent plotted points normally, or, when a
 		//           region polygon is drawn, only the specimens inside it (per-point test).
-		//           The dataset total is unaffected by the polygon.
+		// A species-keyed total is kept too, for the "without coordinates" list below.
 		const totalByKey = new Map();
+		const speciesTotal = byClade ? new Map() : null;
 		for (const s of $taxaStore.specimensByCatalogue.values()) {
 			if (!s.catalogueNumber) continue;
-			totalByKey.set(s.currentDetermination, (totalByKey.get(s.currentDetermination) ?? 0) + 1);
+			const k = keyOf(s);
+			totalByKey.set(k, (totalByKey.get(k) ?? 0) + 1);
+			if (byClade) speciesTotal.set(s.currentDetermination, (speciesTotal.get(s.currentDetermination) ?? 0) + 1);
 		}
+		const speciesTotalByKey = byClade ? speciesTotal : totalByKey;
 		const polygon = $selectionPolygonStore;
 		const mappedByKey = new Map();
 		if (polygon && polygon.length >= 3) {
 			for (const s of $taxaStore.geolocatedSpecimens) {
 				if (!pointInRing(s.lng, s.lat, polygon)) continue;
 				if (matchSpecimen && !matchSpecimen(s)) continue;
-				mappedByKey.set(s.currentDetermination, (mappedByKey.get(s.currentDetermination) ?? 0) + 1);
+				const k = keyOf(s);
+				mappedByKey.set(k, (mappedByKey.get(k) ?? 0) + 1);
 			}
 		} else {
 			for (const s of inView) {
-				mappedByKey.set(s.currentDetermination, (mappedByKey.get(s.currentDetermination) ?? 0) + 1);
+				const k = keyOf(s);
+				mappedByKey.set(k, (mappedByKey.get(k) ?? 0) + 1);
 			}
 		}
 		const tally = (k) => ({ mapped: mappedByKey.get(k) ?? 0, total: totalByKey.get(k) ?? 0 });
@@ -139,36 +191,36 @@
 		determinedKeys.forEach((k, i) =>
 			colourByKey.set(k, tooMany ? FALLBACK_COLOUR : colourForIndex(i))
 		);
-		undetKeys.forEach((k) => colourByKey.set(k, UNDETERMINED_COLOUR));
+		greyKeys.forEach((k) => colourByKey.set(k, UNDETERMINED_COLOUR));
 
 		const points = inView.map((s) => {
-			const { x, y } = projectLngLat(s.lng, s.lat);
-			return { x, y, colour: colourByKey.get(s.currentDetermination), specimen: s };
+			const { x, y } = projectLngLat(s.lng, s.lat, activeBbox);
+			return { x, y, colour: colourByKey.get(keyOf(s)), specimen: s };
 		});
 		// Catalogue → specimen lookup so a pointerdown's target (which carries
 		// data-cat) resolves back to the specimen for tap-to-open.
 		const byCat = new Map(inView.map((s) => [s.catalogueNumber, s]));
 
-		// Legend: coloured determined species first, then grey undetermined rows. Empty
-		// when there are too many determined species to colour-code (the "too many" note
-		// shows instead; points still render — fallback colour + grey undetermined).
+		// Legend rows: coloured keys first, then the grey pile. `name` is the grouping key
+		// (the hide target / clade), `label` its display text. Empty when there are too many
+		// coloured keys to legibly colour-code (points still render with the fallback colour).
+		const labelFor = (k) => (byClade && k === '' ? '(unassigned clade)' : k);
 		const legend = tooMany
 			? []
 			: [
-					...determinedKeys.map((k) => ({ name: k, colour: colourByKey.get(k), undetermined: false, ...tally(k) })),
-					...undetKeys.map((k) => ({ name: k, colour: UNDETERMINED_COLOUR, undetermined: true, ...tally(k) }))
+					...determinedKeys.map((k) => ({ name: k, label: labelFor(k), colour: colourByKey.get(k), undetermined: false, ...tally(k) })),
+					...greyKeys.map((k) => ({ name: k, label: labelFor(k), colour: UNDETERMINED_COLOUR, undetermined: true, ...tally(k) }))
 				];
 
-		// Filtered species with no plottable point — either un-georeferenced or with
-		// coordinates that fell off-map. Listed in the legend's "Without coordinates"
-		// section (in the filtered sort order) so the map's species count reconciles
-		// with the sidebar's filtered count.
+		// Filtered species with no plottable point — un-georeferenced or off-extent. Always
+		// species-level (it lists species, not clades) so the count reconciles with the sidebar.
+		const presentSpecies = new Set(inView.map((s) => s.currentDetermination));
 		const missing = $filteredSpecies
 			.map((s) => s.taxonomicName)
-			.filter((k) => !present.has(k))
-			.map((k) => ({ name: k, undetermined: isUndetermined(k), ...tally(k) }));
+			.filter((k) => !presentSpecies.has(k))
+			.map((k) => ({ name: k, label: k, undetermined: isUndetermined(k), mapped: 0, total: speciesTotalByKey.get(k) ?? 0 }));
 
-		return { points, byCat, legend, offMap, tooMany, speciesCount: determinedKeys.length, missing };
+		return { points, byCat, legend, offMap, tooMany, speciesCount: determinedKeys.length, missing, keyKind: colourMode };
 	});
 
 	// ---- Legend selection (app-wide show/hide) -------------------------------
@@ -184,17 +236,32 @@
 	);
 	// True when every species currently in the legend is hidden — drives the
 	// header toggle's label (Show all ⇄ Hide all).
+	// A legend row is a species (species mode) or a clade (clade mode). Hiding maps to the
+	// app-wide, always-species-keyed hiddenSpeciesStore: a clade row expands to all its
+	// species so a hide stays consistent across the Browse grid, Curate table, and sidebar.
+	function speciesForKey(key) {
+		if (colourMode !== 'clade') return [key];
+		return $filteredSpecies.filter((s) => (s.clade || '') === key).map((s) => s.taxonomicName);
+	}
+	function isKeyHidden(key, hidden) {
+		const names = speciesForKey(key);
+		return names.length > 0 && names.every((n) => hidden.has(n));
+	}
 	const allHidden = $derived(
-		plot.legend.length > 0 && plot.legend.every((i) => $hiddenSpeciesStore.has(i.name))
+		plot.legend.length > 0 && plot.legend.every((i) => isKeyHidden(i.name, $hiddenSpeciesStore))
 	);
 
-	function toggleSpecies(name) {
+	function toggleSpecies(key) {
+		const names = speciesForKey(key);
 		const next = new Set($hiddenSpeciesStore);
-		next.has(name) ? next.delete(name) : next.add(name);
+		const hideNow = !names.every((n) => next.has(n)); // not all hidden → hide all; else show all
+		for (const n of names) hideNow ? next.add(n) : next.delete(n);
 		hiddenSpeciesStore.set(next);
 	}
 	function hideAllSpecies() {
-		hiddenSpeciesStore.set(new Set(plot.legend.map((i) => i.name)));
+		const names = new Set();
+		for (const it of plot.legend) for (const n of speciesForKey(it.name)) names.add(n);
+		hiddenSpeciesStore.set(names);
 	}
 
 	// ---- Specimen search (whole dataset → locate + open modal) ---------------
@@ -205,7 +272,7 @@
 	// A specimen is "locatable" if it has valid in-bbox coordinates (so it plots and
 	// can be panned to). Un-georeferenced specimens are still searchable — they're the
 	// ones a curator georeferences via the modal's "Set location on map".
-	const isLocatable = (s) => s.lat != null && s.lng != null && inBbox(s.lng, s.lat);
+	const isLocatable = (s) => s.lat != null && s.lng != null && inBbox(s.lng, s.lat, activeBbox);
 	const searchMatches = $derived.by(() => {
 		const q = query.trim().toLowerCase();
 		if (!q || !$taxaStore) return [];
@@ -227,7 +294,7 @@
 	});
 
 	function panTo(lng, lat) {
-		const { x, y } = projectLngLat(lng, lat);
+		const { x, y } = projectLngLat(lng, lat, activeBbox);
 		const w = base.w * 0.25;
 		const h = base.h * 0.25;
 		viewBox = { x: x - w / 2, y: y - h / 2, w, h };
@@ -383,7 +450,7 @@
 		// and close it again. A drag-drop stashes its result for that same click phase;
 		// a tap carries pressedSpecimen through.
 		if (draggingPoint && dragPos && pressedSpecimen) {
-			const { lng, lat } = unprojectXY(dragPos.x, dragPos.y);
+			const { lng, lat } = unprojectXY(dragPos.x, dragPos.y, activeBbox);
 			dragResult = { specimen: pressedSpecimen, lng, lat };
 		}
 		draggingPoint = false;
@@ -461,7 +528,7 @@
 		if (!$selectionPolygonStore) return '';
 		return $selectionPolygonStore
 			.map(([lng, lat]) => {
-				const { x, y } = projectLngLat(lng, lat);
+				const { x, y } = projectLngLat(lng, lat, activeBbox);
 				return `${x},${y}`;
 			})
 			.join(' ');
@@ -479,7 +546,7 @@
 	function finishDrawing() {
 		if (vertices.length < 3) return;
 		const polygon = vertices.map((v) => {
-			const { lng, lat } = unprojectXY(v.x, v.y);
+			const { lng, lat } = unprojectXY(v.x, v.y, activeBbox);
 			return [lng, lat];
 		});
 		selectionPolygonStore.set(polygon);
@@ -500,7 +567,7 @@
 		if (placing) {
 			const p = svgPoint(e);
 			if (!p) return;
-			const { lng, lat } = unprojectXY(p.x, p.y);
+			const { lng, lat } = unprojectXY(p.x, p.y, activeBbox);
 			pendingLocation = { lng, lat };
 			placing = false; // modal reappears with the coordinate fields filled
 			return;
@@ -599,17 +666,19 @@
 			Reset view
 		</button>
 
-		<button
-			type="button"
-			onclick={() => (showBiomes = !showBiomes)}
-			aria-pressed={showBiomes}
-			title="Show vegetation zones (habitats) under the points"
-			class="cursor-pointer rounded border px-3 py-1 font-medium {showBiomes
-				? 'border-emerald-600 bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
-				: 'border-gray-300 text-gray-600 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800'}"
-		>
-			Biomes
-		</button>
+		{#if isMad}
+			<button
+				type="button"
+				onclick={() => (showBiomes = !showBiomes)}
+				aria-pressed={showBiomes}
+				title="Show vegetation zones (habitats) under the points"
+				class="cursor-pointer rounded border px-3 py-1 font-medium {showBiomes
+					? 'border-emerald-600 bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+					: 'border-gray-300 text-gray-600 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800'}"
+			>
+				Biomes
+			</button>
+		{/if}
 
 		<!-- Find a specimen by barcode or collector + number (whole dataset) -->
 		<div class="relative">
@@ -674,13 +743,51 @@
 			/>
 		</label>
 
+		<!-- Map extent: Madagascar (default, with biomes) / WIO Region / Global. Auto-detected
+		     from the data on load; these buttons override it until the next dataset switch. -->
+		<div class="flex items-center gap-1" role="group" aria-label="Map extent">
+			{#each [['madagascar', 'Madagascar'], ['wio', 'WIO Region'], ['global', 'Global']] as [id, lbl] (id)}
+				<button
+					type="button"
+					onclick={() => mapExtentStore.set(id)}
+					aria-pressed={extentId === id}
+					class="cursor-pointer rounded border px-2.5 py-1 text-xs font-medium {extentId === id
+						? 'border-emerald-600 bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+						: 'border-gray-300 text-gray-600 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800'}"
+				>
+					{lbl}
+				</button>
+			{/each}
+		</div>
+
+		<!-- Colour points by species (default) or clade (disabled without clade data) -->
+		<div class="flex items-center gap-1" role="group" aria-label="Colour points by">
+			<span class="text-xs text-gray-500 dark:text-gray-400">Colour</span>
+			{#each [['species', 'Species', true], ['clade', 'Clade', hasCladeData]] as [mode, lbl, enabled] (mode)}
+				<button
+					type="button"
+					onclick={() => (colourMode = mode)}
+					disabled={!enabled}
+					aria-pressed={colourMode === mode}
+					title={enabled ? `Colour points by ${lbl.toLowerCase()}` : 'No clade data in this dataset'}
+					class="rounded border px-2.5 py-1 text-xs font-medium {colourMode === mode
+						? 'border-emerald-600 bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+						: 'border-gray-300 text-gray-600 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800'} {enabled
+						? 'cursor-pointer'
+						: 'cursor-not-allowed opacity-40'}"
+				>
+					{lbl}
+				</button>
+			{/each}
+		</div>
+
 		<span class="ml-auto text-xs text-gray-500 dark:text-gray-400">
 			{visiblePoints.length} points · {visibleSpeciesCount} species
 			{#if $hiddenSpeciesStore.size > 0}
 				· <span class="text-gray-400">{$hiddenSpeciesStore.size} hidden</span>
 			{/if}
 			{#if plot.offMap > 0}
-				· <span class="text-amber-600 dark:text-amber-400">{plot.offMap} off-map (bad coordinates)</span>
+				· <span class="text-amber-600 dark:text-amber-400">{plot.offMap} off-map{isMad ? ' (bad coordinates)' : ''}</span>
 			{/if}
 		</span>
 	</div>
@@ -705,7 +812,7 @@
 					onpointerleave={onPointerUp}
 					onclick={onSvgClick}
 					role="application"
-					aria-label="Map of Madagascar showing specimen records"
+					aria-label="Map of {isMad ? 'Madagascar' : extentId === 'wio' ? 'the Western Indian Ocean' : 'the world'} showing specimen records"
 				>
 					<!-- Basemap: parchment land, biome zones clipped to the coast, then a
 					     crisp shoreline stroke on top so the coastline stays sharp over the fills. -->
@@ -715,7 +822,7 @@
 						</clipPath>
 					</defs>
 					<path d={outlinePath} fill="#f3efe3" class="dark:fill-stone-800" pointer-events="none" />
-					{#if showBiomes}
+					{#if showBiomes && isMad}
 						<g clip-path="url(#coast-clip)" pointer-events="none">
 							{#each biomePaths as b (b.id)}
 								<path d={b.d} fill={b.colour} fill-opacity="0.42" class="dark:[fill-opacity:0.3]" />
@@ -798,7 +905,7 @@
 					     and locatable even if a filter or legend toggle hid their points. -->
 					{#each searchMatches as m (m.catalogueNumber)}
 						{#if isLocatable(m)}
-							{@const pt = projectLngLat(m.lng, m.lat)}
+							{@const pt = projectLngLat(m.lng, m.lat, activeBbox)}
 							<circle
 								cx={pt.x}
 								cy={pt.y}
@@ -810,8 +917,8 @@
 							/>
 						{/if}
 					{/each}
-					{#if searchFocus && inBbox(searchFocus.lng, searchFocus.lat)}
-						{@const pf = projectLngLat(searchFocus.lng, searchFocus.lat)}
+					{#if searchFocus && inBbox(searchFocus.lng, searchFocus.lat, activeBbox)}
+						{@const pf = projectLngLat(searchFocus.lng, searchFocus.lat, activeBbox)}
 						<circle
 							cx={pf.x}
 							cy={pf.y}
@@ -845,7 +952,7 @@
 				{/if}
 
 				<!-- Biome key (top-left), shown when the habitat layer is on -->
-				{#if showBiomes}
+				{#if showBiomes && isMad}
 					<div
 						class="pointer-events-none absolute left-2 top-2 z-10 rounded-md border border-gray-200 bg-white/85 px-2.5 py-2 text-[11px] shadow-sm dark:border-gray-700 dark:bg-gray-800/85"
 					>
@@ -894,7 +1001,7 @@
 				{#if plot.legend.length > 0}
 					<div class="mb-2 flex shrink-0 items-center justify-between">
 						<h3 class="font-semibold uppercase text-gray-500 dark:text-gray-400">
-							Species ({plot.speciesCount})
+							{plot.keyKind === 'clade' ? 'Clades' : 'Species'} ({plot.speciesCount})
 						</h3>
 						<button
 							type="button"
@@ -910,8 +1017,8 @@
 					{#if plot.legend.length > 0}
 						<ul class="flex flex-col gap-1">
 							{#each plot.legend as item (item.name)}
-								{@const hidden = $hiddenSpeciesStore.has(item.name)}
-								{@const parts = splitInfra(item.name)}
+								{@const hidden = isKeyHidden(item.name, $hiddenSpeciesStore)}
+								{@const parts = splitInfra(item.label)}
 								<li>
 									<button
 										type="button"
@@ -938,8 +1045,8 @@
 						</ul>
 					{:else if plot.tooMany}
 						<p class="text-gray-500 dark:text-gray-400">
-							{plot.speciesCount} species shown — too many to colour-code. Filter to {PALETTE_SIZE} or
-							fewer species (sidebar) to see distinct colours and a legend.
+							{plot.speciesCount} {plot.keyKind === 'clade' ? 'clades' : 'species'} shown — too many to
+							colour-code. Filter to {PALETTE_SIZE} or fewer (sidebar) to see distinct colours and a legend.
 						</p>
 					{/if}
 
@@ -954,7 +1061,7 @@
 							</h3>
 							<ul class="flex flex-col gap-1">
 								{#each plot.missing as item (item.name)}
-									{@const parts = splitInfra(item.name)}
+									{@const parts = splitInfra(item.label)}
 									<li class="flex items-center gap-2 px-1 py-0.5">
 										<span
 											class="inline-block size-[11px] shrink-0 rounded-full border border-gray-400 dark:border-gray-500"
