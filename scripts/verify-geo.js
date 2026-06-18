@@ -7,10 +7,14 @@ import {
 	projectLngLat,
 	unprojectXY,
 	inBbox,
-	MADAGASCAR_BBOX
+	MADAGASCAR_BBOX,
+	WIO_BBOX,
+	WORLD_BBOX
 } from '../src/lib/utils/geo.js';
 import { MADAGASCAR_OUTLINE } from '../src/lib/data/madagascar.js';
 import { MADAGASCAR_BIOMES } from '../src/lib/data/madagascar-biomes.js';
+import { WIO_OUTLINE } from '../src/lib/data/wio.js';
+import { WORLD_OUTLINE } from '../src/lib/data/world.js';
 
 let failures = 0;
 function check(label, cond) {
@@ -75,14 +79,14 @@ check('a sign-flipped latitude (+24.67) is off-map', inBbox(46.8, 24.666667) ===
 console.log('\n5. bundled basemap data — coastline + biome rings');
 // A ring is well-formed if it has ≥3 vertices, is closed (first === last), and every
 // vertex sits inside the Madagascar bbox (the same guard the map uses to drop bad data).
-function ringWellFormed(ring) {
+function ringWellFormed(ring, bbox) {
 	if (!Array.isArray(ring) || ring.length < 4) return false; // ≥3 distinct + closing point
 	const [fx, fy] = ring[0];
 	const [lx, ly] = ring[ring.length - 1];
 	if (fx !== lx || fy !== ly) return false;
-	return ring.every(([lng, lat]) => inBbox(lng, lat));
+	return ring.every(([lng, lat]) => inBbox(lng, lat, bbox));
 }
-const coastOk = MADAGASCAR_OUTLINE.rings.every(ringWellFormed);
+const coastOk = MADAGASCAR_OUTLINE.rings.every((r) => ringWellFormed(r, MADAGASCAR_BBOX));
 check(`coastline has rings, all closed & in-bbox (${MADAGASCAR_OUTLINE.rings.length} rings)`, MADAGASCAR_OUTLINE.rings.length > 0 && coastOk);
 
 check('biome layer is a non-empty array', Array.isArray(MADAGASCAR_BIOMES) && MADAGASCAR_BIOMES.length > 0);
@@ -92,11 +96,38 @@ let biomeRingsOk = true;
 for (const b of MADAGASCAR_BIOMES) {
 	if (!b.id || !b.label || !/^#[0-9a-fA-F]{6}$/.test(b.colour ?? '')) biomeFields = false;
 	ids.add(b.id);
-	if (!Array.isArray(b.rings) || b.rings.length === 0 || !b.rings.every(ringWellFormed)) biomeRingsOk = false;
+	if (!Array.isArray(b.rings) || b.rings.length === 0 || !b.rings.every((r) => ringWellFormed(r, MADAGASCAR_BBOX))) biomeRingsOk = false;
 }
 check('every biome has id, label, and a #rrggbb colour', biomeFields);
 check('biome ids are unique', ids.size === MADAGASCAR_BIOMES.length);
 check('every biome ring is closed & in-bbox', biomeRingsOk);
+
+console.log('\n6. wider basemaps — WIO + world coastlines');
+const wioOk = WIO_OUTLINE.rings.every((r) => ringWellFormed(r, WIO_BBOX));
+check(
+	`WIO coastline has rings, all closed & in-bbox (${WIO_OUTLINE.rings.length} rings)`,
+	WIO_OUTLINE.rings.length > 0 && wioOk
+);
+const worldOk = WORLD_OUTLINE.rings.every((r) => ringWellFormed(r, WORLD_BBOX));
+check(
+	`world coastline has rings, all closed & in-bbox (${WORLD_OUTLINE.rings.length} rings)`,
+	WORLD_OUTLINE.rings.length > 0 && worldOk
+);
+
+// The world extent uses the plain-equirectangular (cos 0) branch in lngScale; lock the
+// project/unproject round-trip there too.
+let worldErr = 0;
+for (const [lng, lat] of [
+	[-58.4, -34.6], // Buenos Aires
+	[101.7, 3.1], // Kuala Lumpur
+	[37.6, 0.5], // East Africa
+	[-122.3, 47.6] // Seattle
+]) {
+	const { x, y } = projectLngLat(lng, lat, WORLD_BBOX);
+	const back = unprojectXY(x, y, WORLD_BBOX);
+	worldErr = Math.max(worldErr, Math.abs(back.lng - lng), Math.abs(back.lat - lat));
+}
+check(`world round-trip error < 1e-9 (max ${worldErr.toExponential(2)})`, worldErr < 1e-9);
 
 console.log('');
 if (failures === 0) {
