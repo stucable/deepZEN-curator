@@ -549,22 +549,42 @@ export function serializeSpecimensCsv(specimensByCatalogue) {
  * IdentificationDate, Remarks. `Herbarium` is the determiner's institution
  * (e.g. "K"); it reads as blank from older 5-column logs that predate it, so
  * parsing stays backward-compatible. Rows missing a barcode or a name are
- * skipped (they can't re-identify a specimen). Pure — discovery of the log file
- * in the image folder is the persistence layer's job.
+ * skipped (they can't re-identify a specimen). No I/O — discovery of the log
+ * file in the image folder is the persistence layer's job — but it emits a
+ * `console.warn` for PapaParse errors and for skipped rows so a field user who
+ * hand-edits the log can see why entries vanished instead of failing silently.
  * @param {string} text - raw CSV text
  * @returns {Array<{catalogueNumber: string, scientificName: string, identifier: string, herbarium: string, identificationDate: string, remarks: string}>}
  */
 export function parseIdentificationLog(text) {
-	const { data } = Papa.parse(text, {
+	// A fresh/absent log is the normal empty case (e.g. appending the first
+	// entry) — return early so it never trips PapaParse's empty-input warning.
+	if (!text || !text.trim()) return [];
+	const { data, errors } = Papa.parse(text, {
 		header: true,
 		skipEmptyLines: true,
 		transformHeader: (header) => header.trim().replace(/^\uFEFF/, '')
 	});
+	// PapaParse's benign empty/single-token "UndetectableDelimiter" is filtered
+	// out; what remains (mismatched fields, bad quoting) signals real corruption.
+	const parseErrors = (errors ?? []).filter((e) => e.code !== 'UndetectableDelimiter');
+	if (parseErrors.length) {
+		const first = parseErrors[0];
+		const where = first.row != null ? ` (row ${first.row})` : '';
+		console.warn(
+			`parseIdentificationLog: ${parseErrors.length} CSV parse error(s); first: "${first.message}"${where}`
+		);
+	}
 	const entries = [];
-	for (const row of data) {
+	const skippedRows = [];
+	for (const [index, row] of data.entries()) {
 		const catalogueNumber = row.CatalogueNumber?.trim() || '';
 		const scientificName = row.ScientificName?.trim() || '';
-		if (!catalogueNumber || !scientificName) continue;
+		if (!catalogueNumber || !scientificName) {
+			// Report the 1-based position among parsed data rows (header excluded).
+			skippedRows.push(index + 1);
+			continue;
+		}
 		entries.push({
 			catalogueNumber,
 			scientificName,
@@ -573,6 +593,11 @@ export function parseIdentificationLog(text) {
 			identificationDate: row.IdentificationDate?.trim() || '',
 			remarks: row.Remarks?.trim() || ''
 		});
+	}
+	if (skippedRows.length) {
+		console.warn(
+			`parseIdentificationLog: skipped ${skippedRows.length} row(s) missing CatalogueNumber or ScientificName (data row ${skippedRows.join(', ')})`
+		);
 	}
 	return entries;
 }
