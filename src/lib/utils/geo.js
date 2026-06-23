@@ -14,10 +14,11 @@ export const MADAGASCAR_BBOX = { latMin: -25.7, latMax: -11.9, lngMin: 43.1, lng
 
 /**
  * Western Indian Ocean extent — Madagascar + Mascarenes + Comoros + Seychelles +
- * the East-African seaboard. Mirrors the WIO_CLIP rectangle in generate-basemap.js.
+ * all of Mozambique and the East-African seaboard. Centred on Madagascar (centre
+ * lng 47 ≈ its centroid 46.85). Mirrors the WIO_CLIP rectangle in generate-basemap.js.
  * Used when a dataset has georeferenced specimens beyond Madagascar (see detectExtent).
  */
-export const WIO_BBOX = { latMin: -28, latMax: 0, lngMin: 32, lngMax: 64 };
+export const WIO_BBOX = { latMin: -28, latMax: 0, lngMin: 29, lngMax: 65 };
 
 /**
  * Whole-world extent — Antarctica's bulk and the high Arctic trimmed — a coarse

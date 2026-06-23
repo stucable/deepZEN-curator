@@ -4,7 +4,9 @@
 //   src/lib/data/madagascar-biomes.js  — broad vegetation zones ([{ id,label,colour,rings }])
 //   src/lib/data/wio.js                — Western Indian Ocean coastline ({ rings }):
 //                                        Madagascar + Mascarenes + Comoros + Seychelles +
-//                                        the East-African seaboard. No biomes.
+//                                        all of Mozambique + the E-African seaboard. No biomes.
+//   src/lib/data/wio-borders.js        — mainland country borders within the WIO frame
+//                                        ({ lines }), drawn as thin dashed political boundaries.
 //   src/lib/data/world.js              — coarse whole-world coastline ({ rings }) for
 //                                        far-flung (Africa/Asia/Americas) outgroups. No biomes.
 //
@@ -29,7 +31,8 @@
 // Coordinates are simplified (mapshaper) and quantized: 3 dp (~110 m) for the
 // region maps, 2 dp (~1.1 km) for the world locator — keeping the bundled+gzipped
 // payload tiny. The WIO/world coastlines dissolve country borders (-dissolve2) so
-// only shorelines remain; their inland edges sit on the map frame.
+// only shorelines remain; their inland edges sit on the map frame. The WIO map then
+// re-adds mainland political borders as a separate line layer (-innerlines → wio-borders.js).
 
 import { readFile, writeFile, mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -50,9 +53,10 @@ const WORLD_PRECISION = 2; // coarser for the world locator
 
 // Clip rectangles "minLng,minLat,maxLng,maxLat" for the wider coastlines.
 //   WIO: Madagascar + Mascarenes (Rodrigues ~63.4°E) + Comoros + Seychelles +
-//        the Mozambique/Tanzania/Kenya seaboard. Mirrors WIO_BBOX in geo.js.
+//        all of Mozambique (west border ~30.2°E) and the E-African seaboard. Centred on
+//        Madagascar (centre lng 47 ≈ its centroid 46.85). Mirrors WIO_BBOX in geo.js.
 //   WORLD: whole globe with Antarctica's bulk and the high Arctic trimmed.
-const WIO_CLIP = '32,-28,64,0';
+const WIO_CLIP = '29,-28,65,0';
 const WORLD_CLIP = '-180,-58,180,75';
 
 // Per-ecoregion presentation. Keyed by RESOLVE/WWF ECO_NAME. `order` drives both the
@@ -90,6 +94,22 @@ function ringsFromGeojson(j, p = PRECISION) {
 	if (j.type === 'FeatureCollection') return j.features.flatMap((f) => geometryToRings(f.geometry, p));
 	if (j.type === 'Feature') return geometryToRings(j.geometry, p);
 	return geometryToRings(j, p); // bare geometry
+}
+
+/** Flatten a GeoJSON (Multi)LineString geometry into a flat array of open polylines. */
+function geometryToLines(geo, p = PRECISION) {
+	if (!geo) return [];
+	const lines = geo.type === 'MultiLineString' ? geo.coordinates : [geo.coordinates];
+	return lines.map((line) => quantizeRing(line, p)); // quantizeRing just rounds each [x,y]
+}
+
+/** Flatten any parsed GeoJSON of line features (e.g. mapshaper `-innerlines`) to polylines. */
+function linesFromGeojson(j, p = PRECISION) {
+	if (!j) return [];
+	if (j.type === 'GeometryCollection') return j.geometries.flatMap((g) => geometryToLines(g, p));
+	if (j.type === 'FeatureCollection') return j.features.flatMap((f) => geometryToLines(f.geometry, p));
+	if (j.type === 'Feature') return geometryToLines(j.geometry, p);
+	return geometryToLines(j, p); // bare geometry
 }
 
 const countVerts = (rings) => rings.reduce((n, r) => n + r.length, 0);
@@ -136,14 +156,29 @@ async function main() {
 			.map(({ order, ...rest }) => rest); // drop the sort key from the shipped data
 
 		// --- WIO coastline (Madagascar + W. Indian Ocean + E. African seaboard) ---
-		// Clip the 10m countries to the WIO rectangle, then dissolve country borders
-		// so only shorelines remain (inland clip edges sit on the map frame).
+		// Clip the 10m countries to the WIO rectangle, then dissolve country borders so
+		// only shorelines remain (inland clip edges sit on the map frame). Simplify BEFORE
+		// dissolving: `keep-shapes` protects each small island feature during simplification,
+		// but once `-dissolve2` merges every country into one feature it can't, so the tiny
+		// islands (Seychelles, Aldabra) get cleaned away. Simplify-then-dissolve keeps them.
 		const wio = await runToGeojson(
-			`-i "${coastSrc}" -clip bbox=${WIO_CLIP} -dissolve2 -simplify ${WIO_SIMPLIFY} keep-shapes -clean`,
+			`-i "${coastSrc}" -clip bbox=${WIO_CLIP} -simplify ${WIO_SIMPLIFY} keep-shapes -clean -dissolve2`,
 			'wio.geojson',
 			tmp
 		);
 		const wioRings = ringsFromGeojson(wio, PRECISION);
+
+		// --- WIO country borders (political boundaries within the WIO frame) ----
+		// `-innerlines` extracts only the boundaries shared between adjacent countries, as
+		// open polylines — so we get mainland borders (Mozambique, Tanzania, …) with no
+		// coastline duplication and no island clutter (islands border nobody). Drawn as
+		// thin dashed lines on the WIO map; absent on the Madagascar/world extents.
+		const wioBorders = await runToGeojson(
+			`-i "${coastSrc}" -clip bbox=${WIO_CLIP} -simplify ${WIO_SIMPLIFY} keep-shapes -clean -innerlines`,
+			'wio-borders.geojson',
+			tmp
+		);
+		const wioBorderLines = linesFromGeojson(wioBorders, PRECISION);
 
 		// --- World coastline (coarse locator for far-flung outgroups) -----------
 		const world = await runToGeojson(
@@ -158,16 +193,19 @@ async function main() {
 		const outlineJs = renderOutline('MADAGASCAR_OUTLINE', rings, MADAGASCAR_HEADER);
 		const biomesJs = renderBiomes(biomes);
 		const wioJs = renderOutline('WIO_OUTLINE', wioRings, WIO_HEADER);
+		const wioBordersJs = renderLines('WIO_BORDERS', wioBorderLines, WIO_BORDERS_HEADER);
 		const worldJs = renderOutline('WORLD_OUTLINE', worldRings, WORLD_HEADER);
 		await writeFile(join(OUT_DIR, 'madagascar.js'), outlineJs);
 		await writeFile(join(OUT_DIR, 'madagascar-biomes.js'), biomesJs);
 		await writeFile(join(OUT_DIR, 'wio.js'), wioJs);
+		await writeFile(join(OUT_DIR, 'wio-borders.js'), wioBordersJs);
 		await writeFile(join(OUT_DIR, 'world.js'), worldJs);
 
 		console.log(`madagascar.js: ${rings.length} rings, ${countVerts(rings)} verts`);
 		const totalVerts = biomes.reduce((n, b) => n + countVerts(b.rings), 0);
 		console.log(`madagascar-biomes.js: ${biomes.length} classes, ${totalVerts} verts`);
 		console.log(`wio.js: ${wioRings.length} rings, ${countVerts(wioRings)} verts`);
+		console.log(`wio-borders.js: ${wioBorderLines.length} lines, ${countVerts(wioBorderLines)} verts`);
 		console.log(`world.js: ${worldRings.length} rings, ${countVerts(worldRings)} verts`);
 	} finally {
 		await rm(tmp, { recursive: true, force: true });
@@ -194,6 +232,13 @@ const WIO_HEADER = `// Western Indian Ocean coastline for the offline SVG basema
 // borders dissolved, simplified (mapshaper ${WIO_SIMPLIFY}) and quantized to ${PRECISION} dp.
 // Coordinates are [longitude, latitude]. Bundled, never fetched.`;
 
+const WIO_BORDERS_HEADER = `// Mainland country borders within the WIO map frame (Mozambique, Tanzania, Kenya, …).
+// GENERATED by scripts/generate-basemap.js — do not hand-edit; re-run \`npm run prep-basemap\`.
+// Source: Natural Earth 10m admin-0 (public domain), clipped to the WIO bbox, simplified
+// (mapshaper ${WIO_SIMPLIFY}) and reduced to the shared inter-country boundaries (-innerlines),
+// quantized to ${PRECISION} dp. OPEN polylines (not closed rings) — coastlines live in wio.js.
+// Drawn as thin dashed lines on the WIO extent only. Coordinates are [longitude, latitude].`;
+
 const WORLD_HEADER = `// Coarse whole-world coastline for the offline SVG basemap — a locator for far-flung
 // (Africa/Asia/Americas) outgroup specimens. Used when a dataset has specimens beyond the
 // WIO extent (auto-detected). No biome layer at this extent.
@@ -209,6 +254,18 @@ function renderOutline(exportName, rings, header) {
 export const ${exportName} = {
 \trings: [
 ${ringsLiteral(rings, '\t\t')}
+\t]
+};
+`;
+}
+
+function renderLines(exportName, lines, header) {
+	return `${header}
+
+/** @type {{ lines: number[][][] }} */
+export const ${exportName} = {
+\tlines: [
+${ringsLiteral(lines, '\t\t')}
 \t]
 };
 `;
