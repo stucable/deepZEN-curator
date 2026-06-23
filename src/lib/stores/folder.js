@@ -56,48 +56,55 @@ export async function verifyPermission(handle, mode = 'read') {
 }
 
 /**
- * Attempts to restore a previously saved folder handle for the given dataset.
- * If permission is already granted → sets folderHandleStore directly.
- * Otherwise → sets pendingFolderHandleStore so the UI can offer reconnect.
- * Also runs the legacy migration once per session.
+ * Attempts to restore a previously saved folder handle for the given dataset,
+ * resolving to `{ folderHandle, pendingFolderHandle }`:
+ * - permission already granted → folderHandle set, ready to use;
+ * - a handle exists but permission needs re-granting (prompt/denied), OR the
+ *   permission check throws on a stale/revoked handle → pendingFolderHandle set
+ *   so the UI can offer a one-click reconnect;
+ * - no handle was ever saved (or IndexedDB itself is unreadable) → both null.
+ * The key distinction: a saved-but-revoked handle yields a reconnect prompt, not
+ * the same apparently-empty state as a never-picked folder. `commit` (default
+ * true) writes the result straight to the stores. Also runs the legacy migration
+ * once per session.
  */
 export async function restoreFolderHandle(datasetId, { commit = true } = {}) {
 	await migrateLegacyHandle();
-	try {
-		const handle = await idbGet(keyFor(datasetId));
-		if (!handle) {
-			const state = { folderHandle: null, pendingFolderHandle: null };
-			if (commit) {
-				folderHandleStore.set(state.folderHandle);
-				pendingFolderHandleStore.set(state.pendingFolderHandle);
-			}
-			return state;
-		}
-		const state = await handle.queryPermission({ mode: 'read' });
-		if (state === 'granted') {
-			const result = { folderHandle: handle, pendingFolderHandle: null };
-			if (commit) {
-				folderHandleStore.set(result.folderHandle);
-				pendingFolderHandleStore.set(result.pendingFolderHandle);
-			}
-			return result;
-		} else {
-			const result = { folderHandle: null, pendingFolderHandle: handle };
-			if (commit) {
-				folderHandleStore.set(result.folderHandle);
-				pendingFolderHandleStore.set(result.pendingFolderHandle);
-			}
-			return result;
-		}
-	} catch {
-		// IndexedDB or permission check failed — silently ignore
-		const state = { folderHandle: null, pendingFolderHandle: null };
+
+	const apply = (state) => {
 		if (commit) {
 			folderHandleStore.set(state.folderHandle);
 			pendingFolderHandleStore.set(state.pendingFolderHandle);
 		}
 		return state;
+	};
+
+	let handle;
+	try {
+		handle = await idbGet(keyFor(datasetId));
+	} catch {
+		// IndexedDB unreadable — there's no handle to reconnect to.
+		return apply({ folderHandle: null, pendingFolderHandle: null });
 	}
+
+	// Nothing was ever saved for this dataset → genuinely empty, nothing to reconnect.
+	if (!handle) return apply({ folderHandle: null, pendingFolderHandle: null });
+
+	// A handle exists. Decide whether it's live or just needs a reconnect gesture.
+	let permission;
+	try {
+		permission = await handle.queryPermission({ mode: 'read' });
+	} catch {
+		// queryPermission threw (e.g. a stale/revoked handle). We still HAVE the
+		// saved handle, so offer reconnect rather than showing an empty app.
+		return apply({ folderHandle: null, pendingFolderHandle: handle });
+	}
+
+	if (permission === 'granted') {
+		return apply({ folderHandle: handle, pendingFolderHandle: null });
+	}
+	// 'prompt' or 'denied' — saved handle present, permission must be re-granted.
+	return apply({ folderHandle: null, pendingFolderHandle: handle });
 }
 
 /**
