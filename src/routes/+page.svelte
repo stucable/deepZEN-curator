@@ -13,7 +13,7 @@
 	import { restoreTheme } from '$lib/stores/theme.js';
 	import { restoreCuratorName } from '$lib/stores/curator.js';
 	import { viewModeStore, editingSpecimenStore } from '$lib/stores/view.js';
-	import { clearSelection, showAllSpecies } from '$lib/stores/map.js';
+	import { clearSelection, showAllSpecies, mapExtentStore } from '$lib/stores/map.js';
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import SpeciesGrid from '$lib/components/SpeciesGrid.svelte';
 	import CurationView from '$lib/components/CurationView.svelte';
@@ -169,6 +169,7 @@
 			filterStore.set(defaultFilterState());
 			clearSelection();
 			showAllSpecies();
+			mapExtentStore.set('auto'); // re-auto-detect the map extent for the new dataset
 			folderHandleStore.set(null);
 			pendingFolderHandleStore.set(null);
 			(async () => {

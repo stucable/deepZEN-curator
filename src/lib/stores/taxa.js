@@ -1,10 +1,26 @@
 import { writable, derived } from 'svelte/store';
-import { selectionPolygonStore, includeUnlocatedStore, hiddenSpeciesStore } from './map.js';
-import { pointInRing, inBbox } from '$lib/utils/geo.js';
+import { selectionPolygonStore, includeUnlocatedStore, hiddenSpeciesStore, mapExtentStore } from './map.js';
+import { pointInRing, inBbox, detectExtent, MADAGASCAR_BBOX, WIO_BBOX, WORLD_BBOX } from '$lib/utils/geo.js';
 import { isUndetermined } from '$lib/utils/csv.js';
 
 /** Raw data loaded from CSV. null until loadSpeciesData() completes. */
 export const taxaStore = writable(null);
+
+/** Map extent id → bounding box. */
+const BBOX_BY_EXTENT = { madagascar: MADAGASCAR_BBOX, wio: WIO_BBOX, global: WORLD_BBOX };
+
+/**
+ * The resolved map extent: the user's explicit toolbar pick, or — when 'auto' — the
+ * narrowest standard extent that contains the dataset's geolocated specimens
+ * (madagascar → wio → global). Shared by the Map view and the sidebar's mapped-species
+ * count so the framing and the "Showing X of N" total always agree.
+ */
+export const effectiveMapExtent = derived([taxaStore, mapExtentStore], ([$taxa, $extent]) =>
+	$extent === 'auto' ? ($taxa ? detectExtent($taxa.geolocatedSpecimens) : 'madagascar') : $extent
+);
+
+/** The active map bounding box for the resolved extent. */
+export const activeMapBbox = derived(effectiveMapExtent, ($e) => BBOX_BY_EXTENT[$e] ?? MADAGASCAR_BBOX);
 
 /**
  * Map of image-file basename → that specimen's type status (e.g. "holotype"),
@@ -443,19 +459,19 @@ export const filteredSpeciesCounts = derived(visibleSpecies, ($fs) => {
 });
 
 /**
- * Species keys (currentDetermination) that have at least one geolocated, in-bbox
- * specimen that also passes the active specimen-level filters — i.e. that actually
- * show a dot on the map. Applying specimenSearchPredicate here (as MapView's plot does
- * per point) keeps the sidebar's "Showing X of N" map count in step with the dots
- * plotted. Species with no in-bbox matching specimen are excluded.
+ * Species keys (currentDetermination) that have at least one geolocated specimen
+ * inside the active map extent (activeMapBbox) that also passes the active specimen-level
+ * filters — i.e. that actually show a dot on the map. Applying specimenSearchPredicate
+ * here (as MapView's plot does per point) keeps the sidebar's "Showing X of N" map count
+ * in step with the dots plotted. Species with no in-extent matching specimen are excluded.
  */
-const mappedSpeciesKeys = derived([taxaStore, filterStore], ([$taxa, $filter]) => {
+const mappedSpeciesKeys = derived([taxaStore, filterStore, activeMapBbox], ([$taxa, $filter, $bbox]) => {
 	const keys = new Set();
 	if (!$taxa) return keys;
 	const matchSpecimen = specimenSearchPredicate($filter);
 	for (const s of $taxa.geolocatedSpecimens) {
 		if (matchSpecimen && !matchSpecimen(s)) continue;
-		if (inBbox(s.lng, s.lat)) keys.add(s.currentDetermination);
+		if (inBbox(s.lng, s.lat, $bbox)) keys.add(s.currentDetermination);
 	}
 	return keys;
 });

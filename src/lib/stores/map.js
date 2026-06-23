@@ -29,6 +29,15 @@ export const includeUnlocatedStore = writable(true);
  */
 export const hiddenSpeciesStore = writable(new Set());
 
+/**
+ * Which basemap extent the map frames: 'auto' (detect from the dataset's points),
+ * or an explicit 'madagascar' | 'wio' | 'global' chosen via the map toolbar's
+ * extent selector. 'auto' re-resolves per dataset (see effectiveMapExtent in
+ * stores/taxa.js); a manual pick holds until the next dataset switch. Session-only,
+ * reset to 'auto' on dataset switch by the effect in +page.svelte.
+ */
+export const mapExtentStore = writable('auto');
+
 export function clearSelection() {
 	selectionPolygonStore.set(null);
 }

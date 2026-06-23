@@ -12,9 +12,44 @@ const DEG2RAD = Math.PI / 180;
  */
 export const MADAGASCAR_BBOX = { latMin: -25.7, latMax: -11.9, lngMin: 43.1, lngMax: 50.6 };
 
+/**
+ * Western Indian Ocean extent — Madagascar + Mascarenes + Comoros + Seychelles +
+ * the East-African seaboard. Mirrors the WIO_CLIP rectangle in generate-basemap.js.
+ * Used when a dataset has georeferenced specimens beyond Madagascar (see detectExtent).
+ */
+export const WIO_BBOX = { latMin: -28, latMax: 0, lngMin: 32, lngMax: 64 };
+
+/**
+ * Whole-world extent — Antarctica's bulk and the high Arctic trimmed — a coarse
+ * locator for far-flung (Africa/Asia/Americas) outgroups. Mirrors WORLD_CLIP in
+ * generate-basemap.js.
+ */
+export const WORLD_BBOX = { latMin: -58, latMax: 75, lngMin: -180, lngMax: 180 };
+
 /** True if a coordinate falls inside the given bbox (defaults to Madagascar). */
 export function inBbox(lng, lat, bbox = MADAGASCAR_BBOX) {
 	return lng >= bbox.lngMin && lng <= bbox.lngMax && lat >= bbox.latMin && lat <= bbox.latMax;
+}
+
+/**
+ * The narrowest standard extent that contains every geolocated specimen:
+ * 'madagascar' if all points sit in MADAGASCAR_BBOX, else 'wio' if all sit in
+ * WIO_BBOX, else 'global'. Empty input → 'madagascar' (today's default). Drives the
+ * map's auto-detected default extent; the user can still override via the toolbar.
+ * @param {{lng:number, lat:number}[]} points
+ */
+export function detectExtent(points) {
+	if (!points || points.length === 0) return 'madagascar';
+	let extent = 'madagascar';
+	for (const s of points) {
+		if (inBbox(s.lng, s.lat, MADAGASCAR_BBOX)) continue;
+		if (inBbox(s.lng, s.lat, WIO_BBOX)) {
+			extent = 'wio';
+			continue;
+		}
+		return 'global';
+	}
+	return extent;
 }
 
 /**
@@ -23,6 +58,11 @@ export function inBbox(lng, lat, bbox = MADAGASCAR_BBOX) {
  * to x keeps the island from looking horizontally stretched.
  */
 function lngScale(bbox) {
+	// A single cos(meanLat) factor is only correct at the bbox's mean latitude; over a
+	// near-global latitude span it over-compresses x and squashes the map. For such wide
+	// extents fall back to plain equirectangular (cos 0 = 1). Regional extents
+	// (Madagascar, WIO) keep the cos correction unchanged, so they're unaffected.
+	if (bbox.latMax - bbox.latMin > 60) return 1;
 	return Math.cos(((bbox.latMin + bbox.latMax) / 2) * DEG2RAD);
 }
 

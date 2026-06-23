@@ -6,7 +6,7 @@ export const KNOWN_HABITS = ['tree', 'shrub', 'herb', 'liana', 'epiphyte'];
 /** CSV synonyms mapped onto canonical habits. Extend here when new aliases appear. */
 const HABIT_ALIASES = { climber: 'liana' };
 
-const IGNORED_HABIT_TOKENS = new Set([
+export const IGNORED_HABIT_TOKENS = new Set([
 	// Source spreadsheets occasionally contain taxonomic-rank placeholders here.
 	'species',
 	// Lithophyte is not exposed as a UI habit; mixed values like
@@ -28,14 +28,6 @@ export class CsvSchemaError extends Error {
 	}
 }
 
-/**
- * Normalises a raw CSV habit cell into a deduped array of canonical habits.
- * Splits on ';' so multi-habit rows like 'tree;shrub' or 'climber;shrub;tree'
- * yield every relevant canonical value. Each token is trimmed + lowercased,
- * remapped via HABIT_ALIASES (e.g. 'climber' → 'liana'), then matched against
- * KNOWN_HABITS so 'Tree'/'Trees'/'TREES' all collapse to 'tree'. Unsupported
- * tokens are ignored so the UI vocabulary and filter predicates stay aligned.
- */
 function cleanHabitToken(token) {
 	return token
 		.trim()
@@ -44,9 +36,31 @@ function cleanHabitToken(token) {
 		.trim();
 }
 
-function normalizeHabitToken(token) {
-	const cleaned = cleanHabitToken(token);
-	if (!cleaned || IGNORED_HABIT_TOKENS.has(cleaned)) return null;
+/**
+ * Splits a raw CSV habit cell into cleaned (trimmed, lowercased, de-quoted)
+ * tokens without canonicalising them — the shared split/clean step. Multi-habit
+ * cells like 'tree;shrub', 'climber, shrub' or 'lithophyte or epiphyte' split on
+ * ';', ',' or ' or '. Exported so scripts/validate-data.js splits habit cells
+ * identically (it needs the raw tokens to name unknown ones); normalizeHabits
+ * builds on it.
+ */
+export function splitHabitTokens(raw) {
+	if (!raw) return [];
+	return String(raw)
+		.split(/\s*(?:;|,|\bor\b)\s*/i)
+		.map(cleanHabitToken)
+		.filter(Boolean);
+}
+
+/**
+ * Canonicalises one already-cleaned habit token to a KNOWN_HABITS value, or
+ * null. Remaps via HABIT_ALIASES (e.g. 'climber' → 'liana'), then matches
+ * KNOWN_HABITS so 'tree'/'trees'/'tree-like' all collapse to 'tree'; ignored
+ * and unsupported tokens drop out so the UI vocabulary and filter predicates
+ * stay aligned.
+ */
+function canonicalizeHabitToken(cleaned) {
+	if (IGNORED_HABIT_TOKENS.has(cleaned)) return null;
 
 	const aliased = HABIT_ALIASES[cleaned] ?? cleaned;
 	const known = KNOWN_HABITS.find((habit) =>
@@ -58,12 +72,13 @@ function normalizeHabitToken(token) {
 	return known ?? null;
 }
 
+/**
+ * Normalises a raw CSV habit cell into a deduped array of canonical habits
+ * (e.g. 'climber;shrub;tree' → ['liana', 'shrub', 'tree']). Splits via
+ * splitHabitTokens then canonicalises each token; order preserved, dupes removed.
+ */
 export function normalizeHabits(raw) {
-	if (!raw) return [];
-	const canonical = raw
-		.split(/\s*(?:;|,|\bor\b)\s*/i)
-		.map(normalizeHabitToken)
-		.filter(Boolean);
+	const canonical = splitHabitTokens(raw).map(canonicalizeHabitToken).filter(Boolean);
 	return [...new Set(canonical)];
 }
 
@@ -534,22 +549,42 @@ export function serializeSpecimensCsv(specimensByCatalogue) {
  * IdentificationDate, Remarks. `Herbarium` is the determiner's institution
  * (e.g. "K"); it reads as blank from older 5-column logs that predate it, so
  * parsing stays backward-compatible. Rows missing a barcode or a name are
- * skipped (they can't re-identify a specimen). Pure — discovery of the log file
- * in the image folder is the persistence layer's job.
+ * skipped (they can't re-identify a specimen). No I/O — discovery of the log
+ * file in the image folder is the persistence layer's job — but it emits a
+ * `console.warn` for PapaParse errors and for skipped rows so a field user who
+ * hand-edits the log can see why entries vanished instead of failing silently.
  * @param {string} text - raw CSV text
  * @returns {Array<{catalogueNumber: string, scientificName: string, identifier: string, herbarium: string, identificationDate: string, remarks: string}>}
  */
 export function parseIdentificationLog(text) {
-	const { data } = Papa.parse(text, {
+	// A fresh/absent log is the normal empty case (e.g. appending the first
+	// entry) — return early so it never trips PapaParse's empty-input warning.
+	if (!text || !text.trim()) return [];
+	const { data, errors } = Papa.parse(text, {
 		header: true,
 		skipEmptyLines: true,
 		transformHeader: (header) => header.trim().replace(/^\uFEFF/, '')
 	});
+	// PapaParse's benign empty/single-token "UndetectableDelimiter" is filtered
+	// out; what remains (mismatched fields, bad quoting) signals real corruption.
+	const parseErrors = (errors ?? []).filter((e) => e.code !== 'UndetectableDelimiter');
+	if (parseErrors.length) {
+		const first = parseErrors[0];
+		const where = first.row != null ? ` (row ${first.row})` : '';
+		console.warn(
+			`parseIdentificationLog: ${parseErrors.length} CSV parse error(s); first: "${first.message}"${where}`
+		);
+	}
 	const entries = [];
-	for (const row of data) {
+	const skippedRows = [];
+	for (const [index, row] of data.entries()) {
 		const catalogueNumber = row.CatalogueNumber?.trim() || '';
 		const scientificName = row.ScientificName?.trim() || '';
-		if (!catalogueNumber || !scientificName) continue;
+		if (!catalogueNumber || !scientificName) {
+			// Report the 1-based position among parsed data rows (header excluded).
+			skippedRows.push(index + 1);
+			continue;
+		}
 		entries.push({
 			catalogueNumber,
 			scientificName,
@@ -558,6 +593,11 @@ export function parseIdentificationLog(text) {
 			identificationDate: row.IdentificationDate?.trim() || '',
 			remarks: row.Remarks?.trim() || ''
 		});
+	}
+	if (skippedRows.length) {
+		console.warn(
+			`parseIdentificationLog: skipped ${skippedRows.length} row(s) missing CatalogueNumber or ScientificName (data row ${skippedRows.join(', ')})`
+		);
 	}
 	return entries;
 }

@@ -4,25 +4,13 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import Papa from 'papaparse';
 import { datasets } from '../src/lib/datasets.js';
-import { KNOWN_HABITS, normalizeHabits, parseSpeciesCsv } from '../src/lib/utils/csv.js';
-
-const IGNORED_RAW_HABIT_TOKENS = new Set(['species', 'lithophyte']);
-
-function cleanHabitToken(token) {
-	return token
-		.trim()
-		.toLowerCase()
-		.replace(/^"+|"+$/g, '')
-		.trim();
-}
-
-function splitHabitTokens(raw) {
-	if (!raw) return [];
-	return String(raw)
-		.split(/\s*(?:;|,|\bor\b)\s*/i)
-		.map(cleanHabitToken)
-		.filter(Boolean);
-}
+import {
+	IGNORED_HABIT_TOKENS,
+	KNOWN_HABITS,
+	normalizeHabits,
+	parseSpeciesCsv,
+	splitHabitTokens
+} from '../src/lib/utils/csv.js';
 
 function increment(map, key) {
 	map.set(key, (map.get(key) ?? 0) + 1);
@@ -52,7 +40,7 @@ for (const dataset of datasets) {
 	const unknownHabits = new Map();
 	for (const row of parsed.data) {
 		for (const token of splitHabitTokens(row.Habit)) {
-			if (normalizeHabits(token).length === 0 && !IGNORED_RAW_HABIT_TOKENS.has(token)) {
+			if (normalizeHabits(token).length === 0 && !IGNORED_HABIT_TOKENS.has(token)) {
 				increment(unknownHabits, token);
 			}
 		}
