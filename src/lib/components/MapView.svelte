@@ -52,8 +52,18 @@
 
 	// User-adjustable multiplier (toolbar slider) on the occurrence-point size.
 	let pointScale = $state(1);
+	// Base point radius as a fraction of the visible map width. The wider WIO/Global
+	// extents pack far more ground into the same screen, so their points start smaller
+	// to cut overlap; the detailed Madagascar map keeps the larger default. The slider
+	// (pointScale) multiplies on top of whichever base applies.
+	const POINT_BASE_BY_EXTENT = { madagascar: 0.0095, wio: 0.006, global: 0.006 };
+	const pointBase = $derived(POINT_BASE_BY_EXTENT[extentId] ?? 0.0095);
 	// Keep point radius / stroke roughly constant on screen as the user zooms.
-	const pointRadius = $derived(viewBox.w * 0.0095 * pointScale);
+	const pointRadius = $derived(viewBox.w * pointBase * pointScale);
+	// Dot border scales with the dot radius so it stays proportional on every extent —
+	// a fixed stroke looked too heavy once the smaller WIO/Global dots shrank under it.
+	// 0.32 keeps the Madagascar border effectively unchanged (≈ the old viewBox.w*0.003).
+	const pointStroke = $derived(pointRadius * 0.32);
 	const thinStroke = $derived(viewBox.w * 0.003);
 	const polyStroke = $derived(viewBox.w * 0.006);
 
@@ -874,7 +884,7 @@
 							fill="#d97706"
 							fill-opacity="0.9"
 							stroke="#1f2937"
-							stroke-width={thinStroke}
+							stroke-width={pointStroke}
 							pointer-events="none"
 						/>
 					{/if}
@@ -889,7 +899,7 @@
 							fill={p.colour}
 							fill-opacity="0.95"
 							stroke="#1f2937"
-							stroke-width={thinStroke}
+							stroke-width={pointStroke}
 							data-cat={p.specimen.catalogueNumber}
 							style:pointer-events={drawing || placing ? 'none' : 'auto'}
 							class={drawing || placing ? '' : 'cursor-pointer'}
