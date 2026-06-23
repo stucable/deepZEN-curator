@@ -12,6 +12,7 @@
 	import { MADAGASCAR_OUTLINE } from '$lib/data/madagascar.js';
 	import { MADAGASCAR_BIOMES } from '$lib/data/madagascar-biomes.js';
 	import { WIO_OUTLINE } from '$lib/data/wio.js';
+	import { WIO_BORDERS } from '$lib/data/wio-borders.js';
 	import { WORLD_OUTLINE } from '$lib/data/world.js';
 	import { colourForIndex, PALETTE_SIZE } from '$lib/utils/palette.js';
 	import { isUndetermined } from '$lib/utils/csv.js';
@@ -73,7 +74,10 @@
 	// Project a set of [lng,lat] rings into a single SVG path (rings concatenated,
 	// each closed). Shared by the coastline outline and every biome polygon so they
 	// all live in the same projected space as the points.
-	function ringsToPath(rings, bbox) {
+	// Build an SVG path from an array of coordinate sequences. `close` (default) adds a
+	// `Z` per sequence for filled rings (coastlines, biomes); pass false for open polylines
+	// (country borders), which must not be closed back to their start.
+	function ringsToPath(rings, bbox, close = true) {
 		return rings
 			.map(
 				(ring) =>
@@ -82,7 +86,7 @@
 							const { x, y } = projectLngLat(lng, lat, bbox);
 							return `${i === 0 ? 'M' : 'L'}${x.toFixed(4)} ${y.toFixed(4)}`;
 						})
-						.join(' ') + ' Z'
+						.join(' ') + (close ? ' Z' : '')
 			)
 			.join(' ');
 	}
@@ -95,6 +99,26 @@
 	const biomePaths = $derived(
 		isMad ? MADAGASCAR_BIOMES.map((b) => ({ ...b, d: ringsToPath(b.rings, activeBbox) })) : []
 	);
+	// Mainland political borders + country/island name labels — WIO extent only. Labels are
+	// hand-placed (geographic anchors, tuned in-browser); Madagascar is deliberately unlabelled.
+	const isWio = $derived(extentId === 'wio');
+	const bordersPath = $derived(isWio ? ringsToPath(WIO_BORDERS.lines, activeBbox, false) : '');
+	const WIO_LABELS = [
+		{ name: 'Mozambique', lng: 35.0, lat: -18.5 },
+		{ name: 'Tanzania', lng: 34.5, lat: -6.0 },
+		// Island labels are nudged off their islands so they don't obscure the specks:
+		// Comoros/Mauritius/Seychelles sit north of theirs; Mayotte/Réunion sit south.
+		{ name: 'Comoro Islands', lng: 43.3, lat: -10.7 },
+		{ name: 'Mayotte', lng: 45.4, lat: -13.9 },
+		{ name: 'Réunion', lng: 55.5, lat: -22.1 },
+		{ name: 'Mauritius', lng: 57.7, lat: -19.3 },
+		{ name: 'Seychelles', lng: 55.7, lat: -3.9 }
+	];
+	const wioLabels = $derived(
+		isWio ? WIO_LABELS.map((l) => ({ ...l, ...projectLngLat(l.lng, l.lat, activeBbox) })) : []
+	);
+	// Country labels sit at a roughly constant on-screen size (like the points/strokes).
+	const labelSize = $derived(viewBox.w * 0.016);
 	// Habitat (biome) layer visibility — view-only session state, like pointScale.
 	let showBiomes = $state(true);
 	// Colour points by species (default) or clade. Clade needs a populated Clade column.
@@ -848,6 +872,19 @@
 						pointer-events="none"
 					/>
 
+					<!-- Mainland country borders (WIO extent only), thin dashed political lines
+					     under the points. -->
+					{#if isWio && bordersPath}
+						<path
+							d={bordersPath}
+							fill="none"
+							stroke-width={thinStroke}
+							stroke-dasharray="{thinStroke * 3} {thinStroke * 2}"
+							class="stroke-gray-400 dark:stroke-stone-600"
+							pointer-events="none"
+						/>
+					{/if}
+
 					<!-- Committed selection polygon -->
 					{#if committedPoints}
 						<polygon
@@ -939,6 +976,23 @@
 							pointer-events="none"
 						/>
 					{/if}
+					<!-- Country / island name labels (WIO extent only). White halo via
+					     paint-order so they stay legible over land or sea. -->
+					{#each wioLabels as l (l.name)}
+						<text
+							x={l.x}
+							y={l.y}
+							font-size={labelSize}
+							text-anchor="middle"
+							dominant-baseline="middle"
+							paint-order="stroke"
+							stroke-width={labelSize * 0.16}
+							class="fill-gray-700 stroke-white dark:fill-gray-200 dark:stroke-gray-900"
+							pointer-events="none"
+						>
+							{l.name}
+						</text>
+					{/each}
 				</svg>
 
 				<!-- Tooltip -->

@@ -14,6 +14,7 @@ import {
 import { MADAGASCAR_OUTLINE } from '../src/lib/data/madagascar.js';
 import { MADAGASCAR_BIOMES } from '../src/lib/data/madagascar-biomes.js';
 import { WIO_OUTLINE } from '../src/lib/data/wio.js';
+import { WIO_BORDERS } from '../src/lib/data/wio-borders.js';
 import { WORLD_OUTLINE } from '../src/lib/data/world.js';
 
 let failures = 0;
@@ -107,6 +108,14 @@ const wioOk = WIO_OUTLINE.rings.every((r) => ringWellFormed(r, WIO_BBOX));
 check(
 	`WIO coastline has rings, all closed & in-bbox (${WIO_OUTLINE.rings.length} rings)`,
 	WIO_OUTLINE.rings.length > 0 && wioOk
+);
+// WIO country borders are OPEN polylines (not closed rings): need ≥2 points, all in-bbox.
+const lineWellFormed = (line) =>
+	Array.isArray(line) && line.length >= 2 && line.every(([lng, lat]) => inBbox(lng, lat, WIO_BBOX));
+const wioBordersOk = WIO_BORDERS.lines.every(lineWellFormed);
+check(
+	`WIO borders are non-empty polylines, all in-bbox (${WIO_BORDERS.lines.length} lines)`,
+	WIO_BORDERS.lines.length > 0 && wioBordersOk
 );
 const worldOk = WORLD_OUTLINE.rings.every((r) => ringWellFormed(r, WORLD_BBOX));
 check(
