@@ -1,4 +1,4 @@
-deepZEN-curator  —  v1.1  (Ankarafantsika + Ranomafana + Macaranga, 2026-06-11)
+deepZEN-curator  —  v1.2  (Ankarafantsika + Ranomafana + Macaranga, 2026-06-23)
 ===============================================================================
 
 Offline herbarium image browser for field botanists in Madagascar.
@@ -9,6 +9,19 @@ Runs entirely on your laptop — no internet needed once you have the files.
 Three views — Images, Data and Map — let you browse specimen photos,
 edit the records behind them, and place georeferenced collections on a
 map of Madagascar.
+
+
+WHAT'S NEW IN v1.2
+------------------
+- The Map can now zoom out beyond Madagascar. A Madagascar / Western
+  Indian Ocean / Global selector frames the map to fit your specimens —
+  it picks the best fit automatically, or you can choose one yourself.
+  (Western Indian Ocean and Global use plain offline coastlines; the
+  vegetation-zone biomes stay Madagascar-only.)
+- New "Colour" toggle on the map: colour the occurrence points by
+  species (as before) or group them by clade.
+(The map appears only for georeferenced datasets like Macaranga;
+Ankarafantsika and Ranomafana are single-site checklists with no map.)
 
 
 WHAT'S NEW IN v1.1
@@ -405,7 +418,7 @@ REPORTING ISSUES / GETTING UPDATES
 ----------------------------------
 - If something looks wrong (missing species, broken image, weird
   filter behaviour), email Stuart with a screenshot and the
-  version number at the top of this file (v1.1).
+  version number at the top of this file (v1.2).
 - New versions will arrive by email as a small zip. Unzip over
   the old folder (or delete the old folder first to avoid stale
   cached files), then double-click start.bat as before.
