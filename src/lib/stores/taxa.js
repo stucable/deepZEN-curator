@@ -228,6 +228,18 @@ export const regionSpeciesKeys = derived(
 	([$taxa, $polygon]) => ($taxa ? speciesKeysInPolygon($taxa, $polygon) : null)
 );
 
+/**
+ * Derived: the set of species (currentDetermination keys) that have at least one
+ * geolocated specimen anywhere — i.e. the species that can appear on the map. Its
+ * complement (within the filtered set) is the "species without coordinates" the map
+ * legend lists but can't hide. Consumed by `visibleSpecies` and the Curate table so a
+ * legend selection can optionally drop those un-mappable species (see
+ * `includeUnlocatedStore`). `null` before data loads, like `regionSpeciesKeys`.
+ */
+export const locatedSpeciesKeys = derived(taxaStore, ($taxa) =>
+	$taxa ? new Set($taxa.geolocatedSpecimens.map((s) => s.currentDetermination)) : null
+);
+
 /** typeStatus sentinel: match any specimen that carries a type status at all. */
 export const TYPE_ANY = '__any__';
 
@@ -378,10 +390,24 @@ export const speciesFilterKeys = derived(
  * region polygon. The map keeps reading `filteredSpecies` (pre-hide) so the legend can
  * still list and restore hidden species. No-op (returns the same array) when nothing is
  * hidden.
+ *
+ * When a legend selection is active and the `includeUnlocatedStore` toggle is off, this
+ * also drops species with no coordinates anywhere — the un-mappable species the legend
+ * can't hide. Species-level (a surviving located species keeps all its sheets); gated on
+ * `!hasPoly` because a polygon already excludes unlocated species via `regionSpeciesKeys`
+ * and handles no-coordinate sheets at the sheet level in `browseSpecies`. The `$hidden.size`
+ * gate is essential: without an active legend selection the toggle must not touch the plain
+ * default grid.
  */
 export const visibleSpecies = derived(
-	[filteredSpecies, hiddenSpeciesStore],
-	([$fs, $hidden]) => ($hidden.size ? $fs.filter((s) => !$hidden.has(s.taxonomicName)) : $fs)
+	[filteredSpecies, hiddenSpeciesStore, includeUnlocatedStore, locatedSpeciesKeys, selectionPolygonStore],
+	([$fs, $hidden, $include, $located, $polygon]) => {
+		let out = $hidden.size ? $fs.filter((s) => !$hidden.has(s.taxonomicName)) : $fs;
+		const hasPoly = $polygon && $polygon.length >= 3;
+		if ($hidden.size && !hasPoly && !$include && $located)
+			out = out.filter((s) => $located.has(s.taxonomicName));
+		return out;
+	}
 );
 
 /**

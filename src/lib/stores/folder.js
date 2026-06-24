@@ -7,7 +7,7 @@ import {
 	getOverrideFilename,
 	getIdentificationLogFilename
 } from '$lib/datasets.js';
-import { serializeSpecimensCsv, appendIdentificationToLog } from '$lib/utils/csv.js';
+import { serializeSpecimensCsv, appendIdentificationToLog, appendIdentificationsToLog } from '$lib/utils/csv.js';
 
 const LEGACY_KEY = 'imageFolderHandle';
 
@@ -230,6 +230,25 @@ export async function writeSpecimenOverride(folderHandle, dataset, specimensByCa
 export async function appendIdentification(folderHandle, dataset, entry, { filename, user } = {}) {
 	const existing = await readIdentificationLog(folderHandle, dataset);
 	const text = appendIdentificationToLog(existing?.text ?? '', entry);
+	const targetName = filename || existing?.filename || getIdentificationLogFilename(dataset, user);
+	await writeCsvToFolder(folderHandle, targetName, text);
+	return targetName;
+}
+
+/**
+ * Appends N re-identifications to the dataset's identifications log in ONE read+write
+ * (the bulk analogue of appendIdentification). Used by the synonymy "fold X → Y" action,
+ * which re-identifies every sheet of name X at once. Preserves prior bytes (literal
+ * append) except the one-time legacy-schema migration. Same filename-target precedence as
+ * appendIdentification, so the fold writes the same log file the modal uses. Returns the
+ * log filename written (or '' for an empty batch). Must be called inside a user gesture
+ * (it escalates the folder to readwrite).
+ * @returns {Promise<string>}
+ */
+export async function appendIdentifications(folderHandle, dataset, entries, { filename, user } = {}) {
+	if (!entries || entries.length === 0) return filename ?? '';
+	const existing = await readIdentificationLog(folderHandle, dataset);
+	const text = appendIdentificationsToLog(existing?.text ?? '', entries);
 	const targetName = filename || existing?.filename || getIdentificationLogFilename(dataset, user);
 	await writeCsvToFolder(folderHandle, targetName, text);
 	return targetName;

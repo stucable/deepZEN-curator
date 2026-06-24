@@ -259,6 +259,9 @@
 						{#each history as h}
 							<li class="rounded bg-gray-50 px-2 py-1 dark:bg-gray-800">
 								<span class="font-species text-gray-900 dark:text-gray-100">{h.scientificName}</span>
+								{#if h.changeType === 'synonymy'}
+									<span class="ml-1 inline-block rounded bg-emerald-100 px-1 py-0.5 align-middle text-[10px] font-medium text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200" title="Re-identified by folding a synonym into its accepted name">Taxonomic change · synonymy</span>
+								{/if}
 								<div class="text-gray-500 dark:text-gray-400">
 									{h.identifier || '—'}{h.herbarium ? ` (${h.herbarium})` : ''}{h.identificationDate ? ` · ${h.identificationDate.slice(0, 10)}` : ''}
 								</div>

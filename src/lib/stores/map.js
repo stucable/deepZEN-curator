@@ -12,10 +12,14 @@ import { writable } from 'svelte/store';
 export const selectionPolygonStore = writable(null);
 
 /**
- * When a region polygon is active, whether the Browse grid also shows images of
- * specimens that have no coordinates (they may occur in the region, unconfirmed).
- * Drives `browseSpecies` in stores/taxa.js — no effect when no polygon is drawn.
- * Default on; session-only, like `selectionPolygonStore`.
+ * Whether a map narrowing also surfaces specimens/species that have no coordinates.
+ * Governs BOTH map narrowings (the user wants one shared control for both):
+ *   - region polygon: drives `browseSpecies` in stores/taxa.js — keeps no-coordinate
+ *     specimen sheets of in-region species (sheet-level).
+ *   - legend hide: drives `visibleSpecies` — keeps species that have no coordinates
+ *     anywhere (species-level), which the legend can't hide since they're never plotted.
+ * No effect unless a region polygon is drawn or species have been hidden via the map
+ * legend. Default on; session-only, like `selectionPolygonStore`.
  */
 export const includeUnlocatedStore = writable(true);
 

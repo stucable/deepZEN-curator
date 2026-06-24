@@ -1,7 +1,7 @@
 <script>
-	import { taxaStore, regionSpeciesKeys, filterStore, speciesFilterKeys, specimenSearchPredicate, typeStatusOptions, TYPE_ANY } from '$lib/stores/taxa.js';
+	import { taxaStore, regionSpeciesKeys, locatedSpeciesKeys, filterStore, speciesFilterKeys, specimenSearchPredicate, typeStatusOptions, TYPE_ANY } from '$lib/stores/taxa.js';
 	import { selectionPolygonStore, includeUnlocatedStore, hiddenSpeciesStore } from '$lib/stores/map.js';
-	import { editingSpecimenStore } from '$lib/stores/view.js';
+	import { editingSpecimenStore, foldingDeterminationStore } from '$lib/stores/view.js';
 	import { pointInRing } from '$lib/utils/geo.js';
 	import { INSTITUTION_NAMES } from '$lib/utils/csv.js';
 
@@ -64,13 +64,22 @@
 		// polygon), so the Curate table drops their specimens too.
 		const hidden = $hiddenSpeciesStore;
 		if (hidden.size) out = out.filter((s) => !hidden.has(s.currentDetermination));
+		const polygon = $selectionPolygonStore;
+		const hasPoly = polygon && polygon.length >= 3;
+		// When a legend selection is active (no polygon) and the no-coordinate toggle is off,
+		// also drop specimens of species with no coordinates anywhere — the un-mappable
+		// species the legend can't hide. Species-level, matching the Browse grid's
+		// visibleSpecies, so the Images and Data views stay in lock-step.
+		if (hidden.size && !hasPoly && !$includeUnlocatedStore) {
+			const located = $locatedSpeciesKeys;
+			if (located) out = out.filter((s) => located.has(s.currentDetermination));
+		}
 		// Region polygon (drawn in Map mode): keep specimens inside it, plus — when
 		// includeUnlocatedStore is on (default) — no-coordinate specimens *of species that
 		// occur in the region*. The species gate (regionSpeciesKeys) mirrors the Browse
 		// grid, so the Images and Curate views show the same species under a region; without
 		// it, every no-coordinate specimen of every species would leak in.
-		const polygon = $selectionPolygonStore;
-		if (polygon && polygon.length >= 3) {
+		if (hasPoly) {
 			const includeUnlocated = $includeUnlocatedStore;
 			const keys = $regionSpeciesKeys;
 			out = out.filter((s) =>
@@ -217,7 +226,7 @@
 						{#each rows as s (s.catalogueNumber)}
 							<tr
 								onclick={() => editingSpecimenStore.set(s)}
-								class="cursor-pointer border-t border-gray-100 odd:bg-white even:bg-gray-50 hover:bg-emerald-50 focus-within:bg-emerald-50 dark:border-gray-800 dark:odd:bg-gray-900 dark:even:bg-gray-950 dark:hover:bg-emerald-950/40 dark:focus-within:bg-emerald-950/40"
+								class="group cursor-pointer border-t border-gray-100 odd:bg-white even:bg-gray-50 hover:bg-emerald-50 focus-within:bg-emerald-50 dark:border-gray-800 dark:odd:bg-gray-900 dark:even:bg-gray-950 dark:hover:bg-emerald-950/40 dark:focus-within:bg-emerald-950/40"
 							>
 								<td class="px-3 py-2 font-mono text-xs whitespace-nowrap text-gray-700 dark:text-gray-300">
 									<button
@@ -238,7 +247,22 @@
 									{/if}
 								</td>
 								<td class="px-3 py-2 whitespace-nowrap text-gray-600 dark:text-gray-400">{dash(s.family)}</td>
-								<td class="font-species px-3 py-2 whitespace-nowrap text-gray-900 dark:text-gray-100">{s.currentDetermination}</td>
+								<td class="px-3 py-2 whitespace-nowrap text-gray-900 dark:text-gray-100">
+									<div class="flex items-center gap-2">
+										<span class="font-species">{s.currentDetermination}</span>
+										<!-- Fold this determination into an accepted name (synonymy). Stops
+										     propagation so it doesn't also open the per-sheet edit modal. -->
+										<button
+											type="button"
+											onclick={(e) => { e.stopPropagation(); foldingDeterminationStore.set(s.currentDetermination); }}
+											aria-label="Fold {s.currentDetermination} into an accepted name"
+											title="Fold this name into an accepted name (synonymy)"
+											class="shrink-0 cursor-pointer rounded border border-gray-300 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 opacity-0 hover:bg-emerald-50 hover:text-emerald-700 focus:opacity-100 focus:ring-2 focus:ring-emerald-500 focus:outline-none group-hover:opacity-100 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-emerald-950 dark:hover:text-emerald-300"
+										>
+											Fold…
+										</button>
+									</div>
+								</td>
 								<td class="px-3 py-2 whitespace-nowrap text-gray-600 dark:text-gray-400">{dash(s.country)}</td>
 								<td class="max-w-xs truncate px-3 py-2 text-gray-600 dark:text-gray-400" title={s.recordedBy}>{dash(s.recordedBy)}</td>
 								<td class="px-3 py-2 whitespace-nowrap text-gray-600 dark:text-gray-400">{dash(s.recordNumber)}</td>

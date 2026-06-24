@@ -24,3 +24,11 @@ export function setViewMode(mode) {
  * drives the map-placement props (onPickLocation / pendingLocation / hidden).
  */
 export const editingSpecimenStore = writable(null);
+
+/**
+ * The determination name currently being folded into an accepted name (the "X" of a
+ * synonymy "fold X → Y"), or null. Set from Curate to open the single FoldSynonymModal
+ * mounted at the top level in +page.svelte. Session-only, cleared on dataset switch —
+ * parallel to editingSpecimenStore.
+ */
+export const foldingDeterminationStore = writable(null);

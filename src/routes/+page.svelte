@@ -12,13 +12,14 @@
 	import { currentDatasetStore, restoreDataset } from '$lib/stores/dataset.js';
 	import { restoreTheme } from '$lib/stores/theme.js';
 	import { restoreCuratorName } from '$lib/stores/curator.js';
-	import { viewModeStore, editingSpecimenStore } from '$lib/stores/view.js';
+	import { viewModeStore, editingSpecimenStore, foldingDeterminationStore } from '$lib/stores/view.js';
 	import { clearSelection, showAllSpecies, mapExtentStore } from '$lib/stores/map.js';
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import SpeciesGrid from '$lib/components/SpeciesGrid.svelte';
 	import CurationView from '$lib/components/CurationView.svelte';
 	import MapView from '$lib/components/MapView.svelte';
 	import SpecimenEditModal from '$lib/components/SpecimenEditModal.svelte';
+	import FoldSynonymModal from '$lib/components/FoldSynonymModal.svelte';
 
 	let loadedDatasetId = $state(null);
 	// False while restoreFolderHandle is in flight — gates CSV loading so we
@@ -166,6 +167,7 @@
 			csvLoadErrorStore.set(null);
 			identificationLogStore.set([]);
 			editingSpecimenStore.set(null);
+			foldingDeterminationStore.set(null);
 			filterStore.set(defaultFilterState());
 			clearSelection();
 			showAllSpecies();
@@ -220,4 +222,10 @@
      map-placement props). Opened by setting editingSpecimenStore from any view. -->
 {#if $editingSpecimenStore}
 	<SpecimenEditModal specimen={$editingSpecimenStore} onClose={() => editingSpecimenStore.set(null)} />
+{/if}
+
+<!-- Synonymy "fold X → Y": bulk re-identify every sheet of a determination at once.
+     Opened by setting foldingDeterminationStore from the Curate table. -->
+{#if $foldingDeterminationStore}
+	<FoldSynonymModal fromName={$foldingDeterminationStore} onClose={() => foldingDeterminationStore.set(null)} />
 {/if}

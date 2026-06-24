@@ -27,7 +27,8 @@ import {
 	serializeSpecimensCsv,
 	buildSpeciesView,
 	parseIdentificationLog,
-	applyIdentifications
+	applyIdentifications,
+	buildFoldEntries
 } from '../src/lib/utils/csv.js';
 
 let failures = 0;
@@ -142,6 +143,46 @@ async function main() {
 		applyIdentifications(mac.specimensByCatalogue, tie);
 		assert(target.currentDetermination === 'Name D', 'equal-date tie resolves to last-appended entry');
 	}
+
+	console.log('\n5. Synonymy fold round-trip (X → Y)');
+	// A self-contained 3-sheet dataset: 2 sheets of X (coursii) + 1 of Z (lanceolata).
+	const foldCsv = [
+		'TaxonomicName,CatalogueNumber,Genus',
+		'Macaranga coursii,K1,Macaranga',
+		'Macaranga coursii,K2,Macaranga',
+		'Macaranga lanceolata,K3,Macaranga'
+	].join('\r\n');
+	const fp = parseSpeciesCsv(foldCsv);
+	const foldEntries = buildFoldEntries(
+		fp.specimensByCatalogue, 'Macaranga coursii', 'Macaranga sphaerophylla',
+		{ identifier: 'S. Cable', herbarium: 'K', identificationDate: '2026-06-24', remarks: 'syn., DNA' }
+	);
+	assert(foldEntries.length === 2, 'fold enumerates exactly the 2 sheets currently determined as X');
+	assert(foldEntries.every((e) => e.scientificName === 'Macaranga sphaerophylla' && e.changeType === 'synonymy'),
+		'every fold entry targets Y and is flagged changeType=synonymy');
+	// Selective fold: includeBarcodes folds only the chosen subset (K1), leaving K2 under X.
+	const subEntries = buildFoldEntries(
+		fp.specimensByCatalogue, 'Macaranga coursii', 'Macaranga sphaerophylla', {}, new Set(['K1'])
+	);
+	assert(subEntries.length === 1 && subEntries[0].catalogueNumber === 'K1',
+		'includeBarcodes folds only the chosen subset');
+	// A selected barcode not currently named X is excluded (currentDetermination guard).
+	assert(buildFoldEntries(fp.specimensByCatalogue, 'Macaranga coursii', 'Y', {}, new Set(['K1', 'K3'])).length === 1,
+		'a selected barcode not currently named X is excluded (safety guard)');
+	// Apply via the same overlay path a reload uses, then regroup.
+	applyIdentifications(fp.specimensByCatalogue, foldEntries);
+	const foldView = buildSpeciesView(fp.specimensByCatalogue);
+	assert('Macaranga sphaerophylla' in foldView.speciesByName && !('Macaranga coursii' in foldView.speciesByName),
+		'after fold, X is gone and Y absorbs its sheets');
+	assert(fp.specimensByCatalogue.get('K3').currentDetermination === 'Macaranga lanceolata',
+		'unrelated sheet (Z) untouched');
+	assert(fp.specimensByCatalogue.get('K1').taxonomicName === 'Macaranga coursii',
+		'original TaxonomicName retained for audit');
+	// Sheets already folded off X are invisible to a further fold; an absent name yields none.
+	assert(buildFoldEntries(fp.specimensByCatalogue, 'Macaranga coursii', 'Y', {}).length === 0,
+		'sheets already re-ID\'d off X are not re-enumerated');
+	assert(buildFoldEntries(fp.specimensByCatalogue, 'Nonexistent', 'Y', {}).length === 0,
+		'folding an absent name yields no entries (no-op)');
 
 	await rm(tmp, { force: true });
 

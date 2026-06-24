@@ -1,6 +1,6 @@
 <script>
 	import { taxaStore } from '$lib/stores/taxa.js';
-	import { selectionPolygonStore, includeUnlocatedStore, clearSelection } from '$lib/stores/map.js';
+	import { selectionPolygonStore, includeUnlocatedStore, clearSelection, hiddenSpeciesStore, showAllSpecies } from '$lib/stores/map.js';
 	import SpeciesCard from './SpeciesCard.svelte';
 
 	let { species = [] } = $props();
@@ -38,6 +38,23 @@
 				class="mt-3 cursor-pointer rounded border border-amber-500 px-3 py-1 text-sm font-medium text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950"
 			>
 				Clear region
+			</button>
+		{:else if $hiddenSpeciesStore.size > 0 && !$includeUnlocatedStore}
+			<p>No species with coordinates remain after your map selection.</p>
+			<p class="mt-1">The remaining species are imaged only on specimens without coordinates.</p>
+			<button
+				type="button"
+				onclick={() => includeUnlocatedStore.set(true)}
+				class="mt-3 cursor-pointer rounded border border-emerald-600 px-3 py-1 text-sm font-medium text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950"
+			>
+				Include species without coordinates
+			</button>
+			<button
+				type="button"
+				onclick={showAllSpecies}
+				class="mt-3 ml-2 cursor-pointer text-sm text-gray-500 underline hover:text-gray-700 dark:hover:text-gray-300"
+			>
+				Show all species
 			</button>
 		{:else}
 			No species match the current filters.

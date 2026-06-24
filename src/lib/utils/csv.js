@@ -591,7 +591,9 @@ export function parseIdentificationLog(text) {
 			identifier: row.Identifier?.trim() || '',
 			herbarium: row.Herbarium?.trim() || '',
 			identificationDate: row.IdentificationDate?.trim() || '',
-			remarks: row.Remarks?.trim() || ''
+			remarks: row.Remarks?.trim() || '',
+			// Absent in older logs (column added later) → '' = an ordinary re-ID.
+			changeType: row.ChangeType?.trim() || ''
 		});
 	}
 	if (skippedRows.length) {
@@ -602,16 +604,22 @@ export function parseIdentificationLog(text) {
 	return entries;
 }
 
-/** Fixed column order for the identifications log — the inverse of parseIdentificationLog. */
+/**
+ * Fixed column order for the identifications log — the inverse of parseIdentificationLog.
+ * `ChangeType` is LAST on purpose: appending a column keeps older-schema logs parseable
+ * (header-keyed parse fills it blank) and lets appendIdentification(s)ToLog detect the
+ * header mismatch and migrate once, exactly as the earlier `Herbarium` addition did.
+ * Values: '' / 'determination' for an ordinary re-ID, 'synonymy' for a synonymy fold.
+ */
 const IDENTIFICATION_LOG_FIELDS = [
-	'CatalogueNumber', 'ScientificName', 'Identifier', 'Herbarium', 'IdentificationDate', 'Remarks'
+	'CatalogueNumber', 'ScientificName', 'Identifier', 'Herbarium', 'IdentificationDate', 'Remarks', 'ChangeType'
 ];
 
 /** The header line a freshly-written log carries; used to spot an older-schema log on append. */
 const IDENTIFICATION_LOG_HEADER = IDENTIFICATION_LOG_FIELDS.join(',');
 
 const identificationEntryToValues = (e) => [
-	e.catalogueNumber, e.scientificName, e.identifier ?? '', e.herbarium ?? '', e.identificationDate ?? '', e.remarks ?? ''
+	e.catalogueNumber, e.scientificName, e.identifier ?? '', e.herbarium ?? '', e.identificationDate ?? '', e.remarks ?? '', e.changeType ?? ''
 ];
 
 /**
@@ -675,6 +683,38 @@ export function appendIdentificationToLog(existingText, entry) {
 }
 
 /**
+ * The bulk analogue of appendIdentificationToLog: appends every entry in `entries`
+ * (in order) to `existingText` in one shaped tail, so a synonymy fold of N sheets is
+ * a single file write. Same append-only, byte-preserving contract and the same four
+ * invariants, but the legacy-schema migration check is evaluated ONCE for the whole
+ * batch (never re-triggered per row — after the first appended row the header already
+ * matches the current schema) and the file's CRLF/LF newline is resolved once and used
+ * to join all new rows. No-op safe: an empty `entries` returns `existingText` unchanged.
+ * @param {string} existingText - current log text ('' if the file doesn't exist)
+ * @param {Array<object>} entries
+ * @returns {string} the full text to write back
+ */
+export function appendIdentificationsToLog(existingText, entries) {
+	if (!entries || entries.length === 0) return existingText;
+	// Absent/empty log → create with header + all rows.
+	if (!existingText || existingText.trim() === '') {
+		return serializeIdentificationLog(entries) + '\r\n';
+	}
+	// Older-schema log → migrate by re-serialising every existing entry plus ALL new
+	// ones under the current schema, in one pass (older rows gain blank new columns).
+	const headerLine = existingText.slice(0, existingText.search(/\r?\n|$/)).trim().replace(/^﻿/, '');
+	if (headerLine !== IDENTIFICATION_LOG_HEADER) {
+		return serializeIdentificationLog([...parseIdentificationLog(existingText), ...entries]) + '\r\n';
+	}
+	// Current-schema log → literal byte-append. Match the file's own newline once and
+	// use it to separate the appended rows (a lone LF in a CRLF doc would merge a row).
+	const nl = existingText.includes('\r\n') ? '\r\n' : '\n';
+	const body = existingText.endsWith(nl) ? existingText : existingText + nl;
+	const rows = entries.map((e) => serializeIdentificationRow(e)).join(nl);
+	return body + rows + nl;
+}
+
+/**
  * Overlays identification-log entries onto specimens, setting each specimen's
  * currentDetermination to the LATEST entry for its barcode. "Latest" = highest
  * IdentificationDate (ISO strings compare lexically); ties — and the append-only
@@ -705,6 +745,46 @@ export function applyIdentifications(specimensByCatalogue, logEntries) {
 		);
 	}
 	return specimensByCatalogue;
+}
+
+/**
+ * Builds one identification-log entry per barcoded specimen whose
+ * currentDetermination === fromName, re-identifying it to toName — the pure core of a
+ * synonymy "fold X → Y". Matches on currentDetermination (the displayed/grouped name),
+ * not the immutable taxonomicName, so it targets exactly what the curator sees and skips
+ * sheets already re-ID'd off X. Synthetic barcode-less placeholders are excluded (not
+ * real sheets). Every entry is tagged changeType:'synonymy' so the ID-history panel can
+ * flag it as a taxonomic change. The caller appends these (appendIdentifications) and
+ * mirrors them onto the in-memory specimens, then re-runs rebuildView. Returns [] when no
+ * sheet currently bears fromName (a no-op fold).
+ * Pass `includeBarcodes` (a Set of catalogue numbers) to fold only a chosen subset of X's
+ * sheets — e.g. when some material under fromName belongs to a different taxon. A barcode in
+ * the set that isn't currently determined as fromName is still skipped (the currentDetermination
+ * guard holds), so a stale selection can't fold the wrong sheet. Omit it (null) to fold all of X.
+ * @param {Map<string, object>} specimensByCatalogue
+ * @param {string} fromName - current determination to fold away (X)
+ * @param {string} toName - accepted name to fold into (Y)
+ * @param {{identifier?: string, herbarium?: string, identificationDate?: string, remarks?: string}} meta
+ * @param {Set<string>|null} [includeBarcodes] - if set, only fold these catalogue numbers
+ * @returns {Array<object>} log entries
+ */
+export function buildFoldEntries(specimensByCatalogue, fromName, toName, meta = {}, includeBarcodes = null) {
+	const entries = [];
+	for (const s of specimensByCatalogue.values()) {
+		if (!s.catalogueNumber) continue; // skip synthetic placeholders
+		if (s.currentDetermination !== fromName) continue;
+		if (includeBarcodes && !includeBarcodes.has(s.catalogueNumber)) continue;
+		entries.push({
+			catalogueNumber: s.catalogueNumber,
+			scientificName: toName,
+			identifier: meta.identifier ?? '',
+			herbarium: meta.herbarium ?? '',
+			identificationDate: meta.identificationDate ?? '',
+			remarks: meta.remarks ?? '',
+			changeType: 'synonymy'
+		});
+	}
+	return entries;
 }
 
 /**

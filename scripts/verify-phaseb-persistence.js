@@ -22,6 +22,7 @@ import {
 	parseIdentificationLog,
 	serializeIdentificationLog,
 	appendIdentificationToLog,
+	appendIdentificationsToLog,
 	parseSpeciesCsv,
 	serializeSpecimensCsv,
 	applyIdentificationLog
@@ -71,12 +72,12 @@ assert(
 
 console.log('\n3. Identifications-log serialisation round-trip');
 const entries = [
-	{ catalogueNumber: 'K004152211', scientificName: 'Macaranga alpina', identifier: 'S. Cable', herbarium: 'K', identificationDate: '2024-09-01', remarks: 'plain' },
-	{ catalogueNumber: 'K004152212', scientificName: 'Macaranga cuspidata', identifier: 'J. Razafi', herbarium: 'TAN', identificationDate: '2025-01-15', remarks: 'corrected, see note "A"' },
-	{ catalogueNumber: 'K004152213', scientificName: 'Macaranga sp.', identifier: '', herbarium: '', identificationDate: '', remarks: '' }
+	{ catalogueNumber: 'K004152211', scientificName: 'Macaranga alpina', identifier: 'S. Cable', herbarium: 'K', identificationDate: '2024-09-01', remarks: 'plain', changeType: '' },
+	{ catalogueNumber: 'K004152212', scientificName: 'Macaranga cuspidata', identifier: 'J. Razafi', herbarium: 'TAN', identificationDate: '2025-01-15', remarks: 'corrected, see note "A"', changeType: '' },
+	{ catalogueNumber: 'K004152213', scientificName: 'Macaranga sp.', identifier: '', herbarium: '', identificationDate: '', remarks: '', changeType: '' }
 ];
 eq(parseIdentificationLog(serializeIdentificationLog(entries)), entries,
-	'parse(serialize(entries)) === entries (herbarium, commas + quotes survive escaping)');
+	'parse(serialize(entries)) === entries (herbarium, changeType, commas + quotes survive escaping)');
 
 console.log('\n4. Append text-shaping (append-only, byte-preserving)');
 const base = serializeIdentificationLog([entries[0], entries[1]]);
@@ -105,11 +106,35 @@ eq(upgradedEntries.length, 2, 'migration keeps the legacy row and adds the new o
 eq(upgradedEntries[0], { ...entries[0], herbarium: '' },
 	'legacy row survives migration with a blank herbarium');
 eq(upgradedEntries[1], entries[1], 'new row keeps its herbarium through the migration');
-assert(upgraded.split(/\r?\n/)[0] === 'CatalogueNumber,ScientificName,Identifier,Herbarium,IdentificationDate,Remarks',
+assert(upgraded.split(/\r?\n/)[0] === 'CatalogueNumber,ScientificName,Identifier,Herbarium,IdentificationDate,Remarks,ChangeType',
 	'migrated log carries the current header');
 
+console.log('\n4c. Bulk append (synonymy fold: N rows, one shaped write) + ChangeType flag');
+const synEntries = [
+	{ catalogueNumber: 'K004152221', scientificName: 'Macaranga sphaerophylla', identifier: 'S. Cable', herbarium: 'K', identificationDate: '2026-06-24', remarks: 'syn. of M. coursii, DNA', changeType: 'synonymy' },
+	{ catalogueNumber: 'K004152222', scientificName: 'Macaranga sphaerophylla', identifier: 'S. Cable', herbarium: 'K', identificationDate: '2026-06-24', remarks: 'syn. of M. coursii, DNA', changeType: 'synonymy' }
+];
+const bulkBase = serializeIdentificationLog([entries[0]]);
+const bulkOut = appendIdentificationsToLog(bulkBase, synEntries);
+assert(bulkOut.startsWith(bulkBase), 'bulk append preserves prior bytes verbatim (literal append)');
+eq(parseIdentificationLog(bulkOut), [entries[0], ...synEntries],
+	'bulk append yields prior + all new rows in order, ChangeType=synonymy preserved');
+eq(parseIdentificationLog(appendIdentificationsToLog('', synEntries)), synEntries,
+	'bulk append to an absent log creates it with a header');
+eq(appendIdentificationsToLog(bulkBase, []), bulkBase, 'empty batch is a no-op (text unchanged)');
+// A no-trailing-newline tail must not merge the first bulk row.
+assert(!bulkBase.endsWith('\n'), 'precondition: serialised base has no trailing newline');
+eq(parseIdentificationLog(appendIdentificationsToLog(bulkBase, synEntries)), [entries[0], ...synEntries],
+	'bulk append inserts a separating newline so rows never merge');
+// Migration happens once for the whole batch, not per row.
+const bulkUpgraded = parseIdentificationLog(appendIdentificationsToLog(legacyLog, synEntries));
+eq(bulkUpgraded.length, 3, 'legacy-log migration keeps the old row and adds all bulk rows');
+eq(bulkUpgraded[0], { ...entries[0], herbarium: '' }, 'legacy row migrated once with blank herbarium + changeType');
+assert(bulkUpgraded[1].changeType === 'synonymy' && bulkUpgraded[2].changeType === 'synonymy',
+	'synonymy flag survives the schema migration');
+
 console.log('\n5pre. Note-only identification entry (re-affirm current name)');
-const noteOnly = { catalogueNumber: 'K2', scientificName: 'Macaranga cuspidata', identifier: 'S. Cable', herbarium: 'K', identificationDate: '2025-03-01', remarks: 'uncertain — needs checking' };
+const noteOnly = { catalogueNumber: 'K2', scientificName: 'Macaranga cuspidata', identifier: 'S. Cable', herbarium: 'K', identificationDate: '2025-03-01', remarks: 'uncertain — needs checking', changeType: '' };
 eq(parseIdentificationLog(serializeIdentificationLog([noteOnly])), [noteOnly],
 	'a note-only entry round-trips (name unchanged, remarks + herbarium recorded)');
 

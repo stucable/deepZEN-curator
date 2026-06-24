@@ -240,6 +240,19 @@
 			<p class="text-xs text-gray-600 dark:text-gray-300">
 				{$hiddenSpeciesStore.size} species hidden on the map.
 			</p>
+			<!-- Same no-coordinate toggle the Region block offers; only when no polygon is
+			     drawn (the Region block already shows it then). Species with no coordinates
+			     can't be hidden on the map, so this is the only way to drop them. -->
+			{#if !$selectionPolygonStore}
+			<label class="mt-2 flex cursor-pointer items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+				<input
+					type="checkbox"
+					bind:checked={$includeUnlocatedStore}
+					class="size-3.5 cursor-pointer accent-emerald-600"
+				/>
+				Include species without coordinates
+			</label>
+			{/if}
 			<button
 				onclick={showAllSpecies}
 				class="mt-2 w-full cursor-pointer rounded border border-gray-400 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
