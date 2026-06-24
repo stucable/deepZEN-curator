@@ -7,7 +7,9 @@
 		projectLngLat,
 		unprojectXY,
 		inBbox,
-		pointInRing
+		pointInRing,
+		viewBoxFor,
+		WIO_DEFAULT_VIEW
 	} from '$lib/utils/geo.js';
 	import { MADAGASCAR_OUTLINE } from '$lib/data/madagascar.js';
 	import { MADAGASCAR_BIOMES } from '$lib/data/madagascar-biomes.js';
@@ -33,7 +35,7 @@
 
 	const ext = $derived(projectedExtent(activeBbox));
 	const base = $derived({ x: 0, y: 0, w: ext.width, h: ext.height });
-	let viewBox = $state({ ...projectedExtentToBox($activeMapBbox) });
+	let viewBox = $state({ ...defaultViewBoxFor($effectiveMapExtent, $activeMapBbox) });
 	const viewBoxStr = $derived(`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`);
 
 	function projectedExtentToBox(bbox) {
@@ -41,13 +43,20 @@
 		return { x: 0, y: 0, w: e.width, h: e.height };
 	}
 
-	// Reframe to the full extent whenever the dataset or the chosen extent changes.
+	// The default (home) framing for an extent. The WIO extent's basemap spans all of Africa, but
+	// it opens on the classic WIO sub-frame (WIO_DEFAULT_VIEW) — zooming out from there reveals the
+	// rest of the continent. Madagascar/Global open on their full extent.
+	function defaultViewBoxFor(id, bbox) {
+		return id === 'wio' ? viewBoxFor(WIO_DEFAULT_VIEW, bbox) : projectedExtentToBox(bbox);
+	}
+
+	// Reframe to the extent's default view whenever the dataset or the chosen extent changes.
 	let lastViewKey;
 	$effect(() => {
 		const key = `${$currentDatasetStore?.id}:${extentId}`;
 		if (key !== lastViewKey) {
 			lastViewKey = key;
-			viewBox = { ...base };
+			viewBox = defaultViewBoxFor(extentId, activeBbox);
 		}
 	});
 
@@ -104,8 +113,26 @@
 	const isWio = $derived(extentId === 'wio');
 	const bordersPath = $derived(isWio ? ringsToPath(WIO_BORDERS.lines, activeBbox, false) : '');
 	const WIO_LABELS = [
-		{ name: 'Mozambique', lng: 35.0, lat: -18.5 },
+		// Mainland countries (a representative spread). The default WIO sub-frame only shows the
+		// nearest ones (Mozambique, Tanzania); the rest appear as the user zooms out toward the
+		// full Africa extent — SVG clips anything outside the current viewBox, so no JS gating.
+		{ name: 'Mozambique', lng: 37.0, lat: -16.5 },
 		{ name: 'Tanzania', lng: 34.5, lat: -6.0 },
+		{ name: 'South Africa', lng: 24.5, lat: -29.5 },
+		{ name: 'Angola', lng: 17.5, lat: -12.0 },
+		{ name: 'Ethiopia', lng: 39.5, lat: 8.5 },
+		{ name: 'CAR', lng: 20.5, lat: 6.5 },
+		{ name: 'Nigeria', lng: 8.0, lat: 9.5 },
+		{ name: 'Gabon', lng: 11.5, lat: -0.8 },
+		{ name: 'DR Congo', lng: 23.5, lat: -3.0 },
+		{ name: 'Kenya', lng: 38.0, lat: 0.6 },
+		{ name: 'Namibia', lng: 17.0, lat: -22.0 },
+		{ name: 'Botswana', lng: 24.5, lat: -22.0 },
+		{ name: 'Zimbabwe', lng: 29.5, lat: -19.0 },
+		{ name: 'Zambia', lng: 27.0, lat: -14.5 },
+		{ name: 'Ghana', lng: -1.0, lat: 7.8 },
+		{ name: 'Sudan', lng: 30.0, lat: 14.5 },
+		{ name: 'Somalia', lng: 47.5, lat: 6.0 },
 		// Island labels are nudged off their islands so they don't obscure the specks:
 		// Comoros/Mauritius/Seychelles sit north of theirs; Mayotte/Réunion sit south.
 		{ name: 'Comoro Islands', lng: 43.3, lat: -10.7 },
@@ -517,7 +544,7 @@
 	});
 
 	function resetView() {
-		viewBox = { ...base };
+		viewBox = defaultViewBoxFor(extentId, activeBbox);
 	}
 
 	// ---- Scale bar -----------------------------------------------------------

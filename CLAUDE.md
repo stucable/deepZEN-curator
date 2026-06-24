@@ -174,8 +174,13 @@ valid `lat`/`lng`) on a hand-rolled SVG basemap (`src/lib/components/MapView.sve
 - **Selectable extent (Madagascar / WIO / Global)**: the basemap frames one of three extents,
   chosen by the toolbar's 3-way selector or auto-detected from the data. `detectExtent`
   (`geo.js`) picks the narrowest extent containing every geolocated specimen: `madagascar` if all
-  points sit in `MADAGASCAR_BBOX`, else `wio` (`WIO_BBOX` — Madagascar + Mascarenes + Comoros +
-  Seychelles + the East-African seaboard), else `global` (`WORLD_BBOX`). `mapExtentStore`
+  points sit in `MADAGASCAR_BBOX`, else `wio` (`WIO_BBOX` — sub-Saharan & Southern Africa +
+  Mascarenes + Comoros + Seychelles + Madagascar; wide enough for continental-African DNA
+  outgroups), else `global` (`WORLD_BBOX`). The WIO basemap spans all of Africa but **opens on a
+  sub-frame** (`WIO_DEFAULT_VIEW` — the classic Madagascar + islands + E-African-coast view, set as
+  the initial/`resetView` viewBox via `viewBoxFor`); zooming out reaches the rest of the continent
+  (zoom-out is clamped to the full `base` extent). Madagascar/Global open on their full extent.
+  `mapExtentStore`
   (`stores/map.js`, session-only) holds `'auto'` (the default, re-detected per dataset) or an
   explicit pick; `effectiveMapExtent` + `activeMapBbox` (`stores/taxa.js`) resolve it and are
   shared by the map and the sidebar's mapped-species count so they agree. The projection helpers
@@ -201,9 +206,14 @@ valid `lat`/`lng`) on a hand-rolled SVG basemap (`src/lib/components/MapView.sve
   Natural Earth 50m (world coastline, public domain), and RESOLVE Ecoregions 2017 / WWF TEOW
   (biomes, CC-BY). It simplifies (mapshaper, a devDependency); the WIO/world coastlines dissolve
   country borders (`-dissolve2`) so only shorelines remain (inland clip edges sit on the map
-  frame). Quantized to 3 dp (region) / 2 dp (world) so the bundled+gzipped payload stays tiny
-  (~12 KB gz Madagascar pair, ~4 KB gz WIO, ~17 KB gz world). Re-run only to re-derive from fresh
-  sources; output is committed and bundled (offline, no runtime fetch).
+  frame); the WIO map then re-adds African mainland borders as a separate `-innerlines` layer
+  (`wio-borders.js`, drawn dashed) plus hand-placed country labels (`WIO_LABELS` in
+  `MapView.svelte` — Mozambique/Tanzania show in the default frame, the rest as you zoom out).
+  Quantized at 3 dp / 12% for the WIO coastline (fine enough to keep the small islands — the 3
+  Comoros, Mayotte, Seychelles — through `keep-shapes`), but coarser 2 dp / 8% for the WIO borders
+  and the world locator; Madagascar is 3 dp / 20%. So the bundled+gzipped payload stays tiny
+  (~12 KB gz Madagascar pair, ~19 KB gz WIO coastline+borders, ~17 KB gz world). Re-run only to
+  re-derive from fresh sources; output is committed and bundled (offline, no runtime fetch).
 - **Scale bar**: bottom-left overlay; the cos-corrected projection makes 1 projected unit ≈
   111.32 km on both axes, so the bar follows the on-screen scale and updates on zoom/pan. (On the
   world extent — plain equirectangular — it's a rough locator scale, meaningful at regional zoom.)

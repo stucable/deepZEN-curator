@@ -13,12 +13,23 @@ const DEG2RAD = Math.PI / 180;
 export const MADAGASCAR_BBOX = { latMin: -25.7, latMax: -11.9, lngMin: 43.1, lngMax: 50.6 };
 
 /**
- * Western Indian Ocean extent — Madagascar + Mascarenes + Comoros + Seychelles +
- * all of Mozambique and the East-African seaboard. Centred on Madagascar (centre
- * lng 47 ≈ its centroid 46.85). Mirrors the WIO_CLIP rectangle in generate-basemap.js.
+ * Western Indian Ocean + Africa extent — sub-Saharan & Southern Africa (the Sahara
+ * and Mediterranean trimmed) plus Madagascar + Mascarenes + Comoros + Seychelles. The
+ * mainland fills the western ~85% of the frame; the islands sit east. Wide enough that
+ * continental-African DNA outgroups plot here instead of dropping to the Global locator.
+ * Latitude span 54° stays under the lngScale 60° threshold, so the cos-latitude correction
+ * (and an accurate scale bar) are kept. Mirrors the WIO_CLIP rectangle in generate-basemap.js.
  * Used when a dataset has georeferenced specimens beyond Madagascar (see detectExtent).
  */
-export const WIO_BBOX = { latMin: -28, latMax: 0, lngMin: 29, lngMax: 65 };
+export const WIO_BBOX = { latMin: -36, latMax: 18, lngMin: -19, lngMax: 65 };
+
+/**
+ * Default *visible* framing for the WIO extent — a sub-rectangle of WIO_BBOX holding the classic
+ * Western Indian Ocean view (Madagascar + the islands + the East-African coast). The map opens
+ * here; zooming/panning out reveals the rest of Africa within WIO_BBOX. Kept a little squarer than
+ * the old WIO extent so the islands aren't lost at the edges.
+ */
+export const WIO_DEFAULT_VIEW = { latMin: -27, latMax: -1, lngMin: 31, lngMax: 61 };
 
 /**
  * Whole-world extent — Antarctica's bulk and the high Arctic trimmed — a coarse
@@ -89,6 +100,17 @@ export function projectLngLat(lng, lat, bbox = MADAGASCAR_BBOX) {
 		x: (lng - bbox.lngMin) * lngScale(bbox),
 		y: bbox.latMax - lat
 	};
+}
+
+/**
+ * Projected SVG viewBox `{ x, y, w, h }` for a lng/lat sub-rectangle (`viewBbox`) inside a larger
+ * extent's projection (`fullBbox`). Used to open the WIO extent zoomed to WIO_DEFAULT_VIEW while
+ * the basemap still spans the full WIO_BBOX (so zoom-out reveals the rest of Africa).
+ */
+export function viewBoxFor(viewBbox, fullBbox) {
+	const nw = projectLngLat(viewBbox.lngMin, viewBbox.latMax, fullBbox);
+	const se = projectLngLat(viewBbox.lngMax, viewBbox.latMin, fullBbox);
+	return { x: nw.x, y: nw.y, w: se.x - nw.x, h: se.y - nw.y };
 }
 
 /**
