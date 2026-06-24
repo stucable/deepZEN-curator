@@ -1,11 +1,12 @@
 <script>
 	import { onMount, untrack } from 'svelte';
-	import { taxaStore, identificationLogStore } from '$lib/stores/taxa.js';
+	import { taxaStore, identificationLogStore, typeStatusOptions } from '$lib/stores/taxa.js';
 	import { folderHandleStore } from '$lib/stores/folder.js';
 	import { currentDatasetStore } from '$lib/stores/dataset.js';
 	import { curatorNameStore, curatorHerbariumStore } from '$lib/stores/curator.js';
 	import { writeSpecimenOverride, appendIdentification } from '$lib/stores/folder.js';
 	import { rebuildView, parseLat, parseLng } from '$lib/utils/csv.js';
+	import { openImageViewer } from '$lib/utils/viewerWindow.js';
 	import HerbariumImage from './HerbariumImage.svelte';
 
 	let {
@@ -47,6 +48,10 @@
 	let dnaExtraction = $state(seed.dnaExtraction);
 	let dnaSequenced = $state(seed.dnaSequenced === 'yes');
 	let dnaNotes = $state(seed.dnaNotes);
+	// Type-specimen fields (existing CSV columns). Any non-empty typeStatus flags the
+	// sheet as a type across the app (red thumbnail border, Curate badge, map hover).
+	let typeStatus = $state(seed.typeStatus);
+	let typeName = $state(seed.typeName);
 
 	let saving = $state(false);
 	let errorMsg = $state(null);
@@ -96,6 +101,19 @@
 	const canSave = $derived(!!$folderHandleStore && !saving);
 	const imageName = $derived(specimen.imageFiles?.[0] ?? specimen.catalogueNumber);
 
+	// Clicking the thumbnail opens the full-resolution zoomable viewer in its own tab,
+	// the same as a card image in Browse. The viewer streams blobs from this window's
+	// folder handle, so it no-ops without a connected folder. Pass the whole sheet set
+	// (a specimen can have two) so the viewer can page between them.
+	function openViewer() {
+		if (!$folderHandleStore) return;
+		openImageViewer({
+			images: specimen.imageFiles?.length ? specimen.imageFiles : [imageName],
+			startIndex: 0,
+			speciesName: specimen.currentDetermination
+		});
+	}
+
 	async function save() {
 		errorMsg = null;
 		const latTrim = lat.trim();
@@ -136,6 +154,8 @@
 			institutionCode.trim() !== specimen.institutionCode ||
 			recordedBy.trim() !== specimen.recordedBy ||
 			recordNumber.trim() !== specimen.recordNumber ||
+			typeStatus.trim() !== specimen.typeStatus ||
+			typeName.trim() !== specimen.typeName ||
 			leafVal !== specimen.leafSample ||
 			dnaExtractionTrim !== specimen.dnaExtraction ||
 			dnaSequencedVal !== specimen.dnaSequenced ||
@@ -176,6 +196,8 @@
 				specimen.institutionCode = institutionCode.trim();
 				specimen.recordedBy = recordedBy.trim();
 				specimen.recordNumber = recordNumber.trim();
+				specimen.typeStatus = typeStatus.trim();
+				specimen.typeName = typeName.trim();
 				specimen.leafSample = leafVal;
 				specimen.dnaExtraction = dnaExtractionTrim;
 				specimen.dnaSequenced = dnaSequencedVal;
@@ -247,7 +269,7 @@
 			<div class="flex flex-col gap-4">
 				<div class="aspect-square w-full overflow-hidden rounded border border-gray-200 dark:border-gray-700">
 					{#if imageName}
-						<HerbariumImage catalogueNumber={imageName} folderHandle={$folderHandleStore} />
+						<HerbariumImage catalogueNumber={imageName} folderHandle={$folderHandleStore} onclick={openViewer} />
 					{:else}
 						<div class="flex h-full items-center justify-center text-xs text-gray-400">No image</div>
 					{/if}
@@ -330,33 +352,37 @@
 					</button>
 				{/if}
 
-				<div>
-					<label for="edit-country" class={labelClass}>Country</label>
-					<input id="edit-country" type="text" list="country-options" bind:value={country} class={fieldClass} />
-					<datalist id="country-options">
-						{#each countryOptions as c}<option value={c}></option>{/each}
-					</datalist>
+				<div class="grid grid-cols-2 items-start gap-3">
+					<div>
+						<label for="edit-country" class={labelClass}>Country</label>
+						<input id="edit-country" type="text" list="country-options" bind:value={country} class={fieldClass} />
+						<datalist id="country-options">
+							{#each countryOptions as c}<option value={c}></option>{/each}
+						</datalist>
+					</div>
+
+					<div>
+						<label for="edit-institution" class={labelClass}>Holding herbarium</label>
+						<input id="edit-institution" type="text" list="institution-options" bind:value={institutionCode} placeholder="e.g. K" class={fieldClass} />
+						<datalist id="institution-options">
+							{#each institutionOptions as h}<option value={h}></option>{/each}
+						</datalist>
+						<p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+							Institution holding the sheet
+						</p>
+					</div>
 				</div>
 
-				<div>
-					<label for="edit-institution" class={labelClass}>Holding herbarium</label>
-					<input id="edit-institution" type="text" list="institution-options" bind:value={institutionCode} placeholder="e.g. K" class={fieldClass} />
-					<datalist id="institution-options">
-						{#each institutionOptions as h}<option value={h}></option>{/each}
-					</datalist>
-					<p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
-						Institution holding the sheet — defaults from the barcode prefix.
-					</p>
-				</div>
+				<div class="grid grid-cols-2 items-start gap-3">
+					<div>
+						<label for="edit-collector" class={labelClass}>Collector</label>
+						<input id="edit-collector" type="text" bind:value={recordedBy} class={fieldClass} />
+					</div>
 
-				<div>
-					<label for="edit-collector" class={labelClass}>Collector</label>
-					<input id="edit-collector" type="text" bind:value={recordedBy} class={fieldClass} />
-				</div>
-
-				<div>
-					<label for="edit-collno" class={labelClass}>Collection number</label>
-					<input id="edit-collno" type="text" bind:value={recordNumber} class={fieldClass} />
+					<div>
+						<label for="edit-collno" class={labelClass}>Collection number</label>
+						<input id="edit-collno" type="text" bind:value={recordNumber} class={fieldClass} />
+					</div>
 				</div>
 
 				<div class="mt-1 border-t border-gray-200 pt-3 dark:border-gray-700">
@@ -379,6 +405,25 @@
 						<div>
 							<label for="edit-dna-notes" class={labelClass}>DNA notes</label>
 							<input id="edit-dna-notes" type="text" bind:value={dnaNotes} placeholder="e.g. sequence file, or 'degraded DNA'" class={fieldClass} />
+						</div>
+					</div>
+				</div>
+
+				<div class="mt-1 border-t border-gray-200 pt-3 dark:border-gray-700">
+					<div class="grid grid-cols-2 items-start gap-3">
+						<div>
+							<label for="edit-type-status" class={labelClass}>Type status</label>
+							<input id="edit-type-status" type="text" list="type-status-options" bind:value={typeStatus} placeholder="e.g. Isotype" class={fieldClass} />
+							<datalist id="type-status-options">
+								{#each $typeStatusOptions as t}<option value={t}></option>{/each}
+							</datalist>
+							<p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+								Any value flags this sheet as a type (red thumbnail border + Data view).
+							</p>
+						</div>
+						<div>
+							<label for="edit-type-name" class={labelClass}>Type name</label>
+							<input id="edit-type-name" type="text" bind:value={typeName} class="{fieldClass} font-species" />
 						</div>
 					</div>
 				</div>
