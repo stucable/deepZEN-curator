@@ -27,9 +27,10 @@ export const WIO_BBOX = { latMin: -36, latMax: 18, lngMin: -19, lngMax: 65 };
  * Default *visible* framing for the WIO extent — a sub-rectangle of WIO_BBOX holding the classic
  * Western Indian Ocean view (Madagascar + the islands + the East-African coast). The map opens
  * here; zooming/panning out reveals the rest of Africa within WIO_BBOX. Kept a little squarer than
- * the old WIO extent so the islands aren't lost at the edges.
+ * the old WIO extent so the islands aren't lost at the edges. The eastern edge reaches 64.5°E so
+ * Rodrigues (~63.4°E) sits inside the opening frame alongside Réunion and Mauritius.
  */
-export const WIO_DEFAULT_VIEW = { latMin: -27, latMax: -1, lngMin: 31, lngMax: 61 };
+export const WIO_DEFAULT_VIEW = { latMin: -27, latMax: -1, lngMin: 31, lngMax: 64.5 };
 
 /**
  * Whole-world extent — Antarctica's bulk and the high Arctic trimmed — a coarse
@@ -48,20 +49,38 @@ export function inBbox(lng, lat, bbox = MADAGASCAR_BBOX) {
  * 'madagascar' if all points sit in MADAGASCAR_BBOX, else 'wio' if all sit in
  * WIO_BBOX, else 'global'. Empty input → 'madagascar' (today's default). Drives the
  * map's auto-detected default extent; the user can still override via the toolbar.
- * @param {{lng:number, lat:number}[]} points
+ * Reads the display coordinate (mapLng/mapLat — real GPS or an island anchor) so an
+ * anchored Mascarene out-group switches the dataset to the WIO extent; falls back to
+ * the raw lng/lat so plain `{lng, lat}` points (e.g. the unit tests) still work.
+ * @param {{lng:number, lat:number, mapLng?:number, mapLat?:number}[]} points
  */
 export function detectExtent(points) {
 	if (!points || points.length === 0) return 'madagascar';
 	let extent = 'madagascar';
 	for (const s of points) {
-		if (inBbox(s.lng, s.lat, MADAGASCAR_BBOX)) continue;
-		if (inBbox(s.lng, s.lat, WIO_BBOX)) {
+		const lng = s.mapLng ?? s.lng;
+		const lat = s.mapLat ?? s.lat;
+		if (inBbox(lng, lat, MADAGASCAR_BBOX)) continue;
+		if (inBbox(lng, lat, WIO_BBOX)) {
 			extent = 'wio';
 			continue;
 		}
 		return 'global';
 	}
 	return extent;
+}
+
+/**
+ * True when a specimen is an island-anchored (approximate) sheet being viewed on the Madagascar
+ * extent. The anchored WIO islands aren't drawn on the Madagascar basemap — Mayotte's centroid
+ * even falls inside the rectangular MADAGASCAR_BBOX — so such sheets must be hidden there: the
+ * Madagascar view shows only real Madagascar records. Shared by the map plot, the search locator,
+ * and the sidebar's mapped-species count so the dots and the "Showing X of N" total agree.
+ * @param {{approximate?:boolean}} s
+ * @param {string} extentId 'madagascar' | 'wio' | 'global'
+ */
+export function isOffMadagascarAnchor(s, extentId) {
+	return extentId === 'madagascar' && s.approximate === true;
 }
 
 /**
@@ -146,4 +165,114 @@ export function pointInRing(lng, lat, ring) {
 		if (intersects) inside = !inside;
 	}
 	return inside;
+}
+
+// ---- Island anchors (display-only placement of coordinate-less island sheets) ----
+
+/**
+ * Normalise a string for tolerant matching: strip diacritics (so "Réunion" === "Reunion"),
+ * trim, lowercase. Non-strings fold to ''.
+ */
+function fold(s) {
+	return typeof s === 'string'
+		? s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
+		: '';
+}
+
+/**
+ * Resolve a specimen's text fields to a bundled island anchor, or null. Field-agnostic,
+ * but `Country` is the live path for these datasets (it holds the island itself — e.g.
+ * "Reunion", not "France"). Match order, first hit wins:
+ *   1. a dedicated `island` field (exact, against folded synonyms);
+ *   2. `country` (exact, against folded synonyms);
+ *   3. `locality` (substring — the island named inside free text; tokens <4 chars skipped
+ *      so a short synonym can't false-match a longer word).
+ * Pure: reads only the passed strings, never coordinates. Callers should only invoke this
+ * for a specimen with no real GPS (see resolveMapCoords). Madagascar / mainland names match
+ * nothing because the gazetteer deliberately omits them.
+ * @param {{island?:string, country?:string, locality?:string}} fields
+ * @param {{id:string,label:string,names:string[],lat:number,lng:number}[]} anchors
+ * @returns {object|null}
+ */
+export function resolveIslandAnchor(fields, anchors) {
+	if (!fields || !anchors) return null;
+	const island = fold(fields.island);
+	const country = fold(fields.country);
+	const locality = fold(fields.locality);
+
+	for (const key of [island, country]) {
+		if (!key) continue;
+		for (const a of anchors) if (a.names.includes(key)) return a;
+	}
+	if (locality) {
+		for (const a of anchors)
+			if (a.names.some((n) => n.length >= 4 && locality.includes(n))) return a;
+	}
+	return null;
+}
+
+/**
+ * Display coordinate + provenance for a specimen, WITHOUT touching its recorded lat/lng.
+ * Real GPS always wins; else a Mascarene island anchor; else nothing. Returns the fields the
+ * map needs — callers spread them onto the specimen as mapLat/mapLng/coordinateSource/
+ * approximate/anchorLabel. Recorded lat/lng stay untouched, so the edit modal and the CSV
+ * serializer stay honest (an anchored sheet keeps blank recorded coordinates on disk).
+ * @param {{lat:number|null, lng:number|null, island?:string, country?:string, locality?:string}} s
+ * @param {object[]} anchors gazetteer (ISLAND_ANCHORS)
+ * @returns {{mapLat:number|null, mapLng:number|null, coordinateSource:('gps'|'island'|null), approximate:boolean, anchorLabel:string}}
+ */
+export function resolveMapCoords(s, anchors) {
+	if (s.lat != null && s.lng != null) {
+		return { mapLat: s.lat, mapLng: s.lng, coordinateSource: 'gps', approximate: false, anchorLabel: '' };
+	}
+	const a = resolveIslandAnchor(s, anchors);
+	if (a) {
+		return { mapLat: a.lat, mapLng: a.lng, coordinateSource: 'island', approximate: true, anchorLabel: a.label };
+	}
+	return { mapLat: null, mapLng: null, coordinateSource: null, approximate: false, anchorLabel: '' };
+}
+
+// ---- Co-located point grouping (display-only) ----
+
+/**
+ * Partition projected points into lone singles and exact-coincident stacks (≥2 sharing one
+ * x,y). Island-anchored sheets place every specimen on a single island centroid, so they
+ * project to an identical x,y and group here; genuinely-distinct GPS points never collide,
+ * so dense maps are untouched and the result is zoom-independent (unlike the old grid-cell
+ * spread, whose cell scaled with zoom and fanned distinct points into the sea). Pure; reads
+ * only x/y; preserves input order; point objects (and their specimen/colour) pass through by
+ * reference, never mutated.
+ * @param {{x:number,y:number}[]} points projected points (each carries specimen, colour…)
+ * @returns {{singles:object[], stacks:{x:number,y:number,members:object[]}[]}}
+ */
+export function groupColocated(points) {
+	const buckets = new Map();
+	for (const p of points ?? []) {
+		const key = `${p.x},${p.y}`;
+		let b = buckets.get(key);
+		if (!b) buckets.set(key, (b = []));
+		b.push(p);
+	}
+	const singles = [];
+	const stacks = [];
+	for (const b of buckets.values()) {
+		if (b.length === 1) singles.push(b[0]);
+		else stacks.push({ x: b[0].x, y: b[0].y, members: b });
+	}
+	return { singles, stacks };
+}
+
+/**
+ * Even ring of n offsets at the given radius (projected map units), for the click-to-expand
+ * "spiderfy" burst around a stack centre. angle = 2π·i/n starting at the top; each entry is the
+ * offset to ADD to the centre. Pure and deterministic.
+ * @param {number} n number of members
+ * @param {number} radius ring radius in projected map units
+ * @returns {{dx:number, dy:number}[]}
+ */
+export function burstRing(n, radius) {
+	return Array.from({ length: n }, (_, i) => {
+		const a = (2 * Math.PI * i) / n - Math.PI / 2;
+		return { dx: radius * Math.cos(a), dy: radius * Math.sin(a) };
+	});
 }

@@ -172,17 +172,21 @@ otherwise, and `+page.svelte` falls back to Browse if the active dataset has no
 valid `lat`/`lng`) on a hand-rolled SVG basemap (`src/lib/components/MapView.svelte`).
 
 - **Selectable extent (Madagascar / WIO / Global)**: the basemap frames one of three extents,
-  chosen by the toolbar's 3-way selector or auto-detected from the data. `detectExtent`
-  (`geo.js`) picks the narrowest extent containing every geolocated specimen: `madagascar` if all
-  points sit in `MADAGASCAR_BBOX`, else `wio` (`WIO_BBOX` — sub-Saharan & Southern Africa +
-  Mascarenes + Comoros + Seychelles + Madagascar; wide enough for continental-African DNA
-  outgroups), else `global` (`WORLD_BBOX`). The WIO basemap spans all of Africa but **opens on a
-  sub-frame** (`WIO_DEFAULT_VIEW` — the classic Madagascar + islands + E-African-coast view, set as
-  the initial/`resetView` viewBox via `viewBoxFor`); zooming out reaches the rest of the continent
+  chosen by the toolbar's 3-way selector. The map **defaults to `madagascar`** (it's for
+  genus-level curation across Madagascar, so it opens there and the curator switches out to WIO /
+  Global to see outgroups). `detectExtent` (`geo.js`) — used only when the extent is set to `'auto'`
+  — picks the narrowest extent containing every geolocated specimen: `madagascar` if all points sit
+  in `MADAGASCAR_BBOX`, else `wio` (`WIO_BBOX` — sub-Saharan & Southern Africa + Mascarenes + Comoros
+  + Seychelles + Madagascar; wide enough for continental-African DNA outgroups), else `global`
+  (`WORLD_BBOX`). The WIO basemap spans all of Africa but **opens on a sub-frame**
+  (`WIO_DEFAULT_VIEW` — the classic Madagascar + islands + E-African-coast view, set as the
+  initial/`resetView` viewBox via `viewBoxFor`); zooming out reaches the rest of the continent
   (zoom-out is clamped to the full `base` extent). Madagascar/Global open on their full extent.
-  `mapExtentStore`
-  (`stores/map.js`, session-only) holds `'auto'` (the default, re-detected per dataset) or an
-  explicit pick; `effectiveMapExtent` + `activeMapBbox` (`stores/taxa.js`) resolve it and are
+  Discrete **+/- zoom buttons** (top-right of the map) supplement wheel-zoom for touchpad/no-mouse
+  users (`zoomStep` → the shared `zoomAt` in `MapView.svelte`). `mapExtentStore`
+  (`stores/map.js`, session-only) holds `'madagascar'` (the default, re-applied per dataset switch),
+  an explicit `'wio'`/`'global'` pick, or `'auto'`; `effectiveMapExtent` + `activeMapBbox`
+  (`stores/taxa.js`) resolve it and are
   shared by the map and the sidebar's mapped-species count so they agree. The projection helpers
   in `geo.js` (`projectLngLat`/`unprojectXY`/`projectedExtent`/`inBbox`, all bbox-parameterised)
   thread the active bbox; `lngScale` falls back to plain equirectangular (cos 0 = 1) once a bbox's
@@ -223,8 +227,26 @@ valid `lat`/`lng`) on a hand-rolled SVG basemap (`src/lib/components/MapView.sve
   "Clades (N)") and the empty-clade pile shows as grey "(unassigned clade)". The Clade button is
   disabled when the dataset has no clade data (e.g. Macaranga's empty `Clade` column). Legend
   hide is always species-keyed (a clade row expands to its species), so it stays consistent with
-  the Browse grid / Curate table / sidebar. Above 16 coloured keys the map shows a single colour +
-  a "filter to fewer" note. Sidebar species filters drive which points appear.
+  the Browse grid / Curate table / sidebar. The colour cap follows the *shown* (not-hidden) keys:
+  above 16 shown keys the points fall back to a single jade colour, but the legend stays fully
+  listed and pickable with a note inviting you to hide species down to 16 (≤16 shown → distinct
+  colours return); hidden determined species keep a jade swatch, indets stay grey and never count
+  toward the cap. Sidebar species filters drive which points appear.
+- **Co-located points stack + click-spiderfy**: specimens at the *exact* same projected position
+  (chiefly island-anchored sheets, occasionally a true duplicate) collapse to one count dot on that
+  spot; clicking the hub spiderfies the members onto a ring with connector legs (each member its own
+  marker / tooltip / click-to-open modal), and clicking the hub again or empty map collapses it
+  (`groupColocated` + `burstRing` in `geo.js`, `explodedKey`/`data-stack` in `MapView.svelte`).
+  Distinct GPS points never collide, so dense maps render as normal singles, untouched and
+  zoom-independent. Coordinate-less records naming a small WIO island
+  (`src/lib/data/island-anchors.js` — the Mascarenes + Seychelles / Comoros / Mayotte; Madagascar
+  and the African mainland deliberately excluded so they can never match) pin to that island's
+  centroid as a display-only *approximate* position (never written back to CSV), surfaced in the
+  hover tooltip. These anchored (`approximate`) sheets are **hidden on the Madagascar extent**
+  (`isOffMadagascarAnchor` in `geo.js`) — none of the anchored islands are drawn on the Madagascar
+  basemap, and Mayotte's centroid even falls inside `MADAGASCAR_BBOX`, so the Madagascar view shows
+  only real Madagascar records; they reappear on WIO / Global. The rule is shared by the map plot,
+  the search locator, and the sidebar's mapped-species count so all three agree.
 - **Polygon filter narrows the whole app (two tiers)**: `selectionPolygonStore`
   (`src/lib/stores/map.js`, session-only, lng/lat) is a dependency of `filteredSpecies` — a
   species passes if any of its geolocated specimens is inside the polygon. This species-level

@@ -6,6 +6,8 @@
 	import { curatorNameStore, curatorHerbariumStore } from '$lib/stores/curator.js';
 	import { writeSpecimenOverride, appendIdentification } from '$lib/stores/folder.js';
 	import { rebuildView, parseLat, parseLng } from '$lib/utils/csv.js';
+	import { resolveMapCoords } from '$lib/utils/geo.js';
+	import { ISLAND_ANCHORS } from '$lib/data/island-anchors.js';
 	import { openImageViewer } from '$lib/utils/viewerWindow.js';
 	import HerbariumImage from './HerbariumImage.svelte';
 
@@ -203,6 +205,11 @@
 				specimen.dnaSequenced = dnaSequencedVal;
 				specimen.dnaNotes = dnaNotesTrim;
 				specimen.editedAt = now;
+				// Re-derive the display coordinate now that lat/lng/country may have changed.
+				// A coordinate-less island sheet given a precise GPS upgrades from approximate
+				// (hollow) to a solid dot — and the reverse — immediately, before rebuildView
+				// re-filters the map. Recorded lat/lng (written above) stay the honest source.
+				Object.assign(specimen, resolveMapCoords(specimen, ISLAND_ANCHORS));
 				await writeSpecimenOverride(folder, ds, $taxaStore.specimensByCatalogue, { user });
 			}
 			// Regroup the species view + refresh dropdowns/map from the mutated map.

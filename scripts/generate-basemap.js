@@ -164,12 +164,14 @@ async function main() {
 
 		// --- WIO coastline (sub-Saharan + Southern Africa + W. Indian Ocean islands) ---
 		// Clip the 10m countries to the WIO/Africa rectangle, then dissolve country borders so
-		// only shorelines remain (inland clip edges sit on the map frame). Simplify BEFORE
-		// dissolving: `keep-shapes` protects each small island feature during simplification,
-		// but once `-dissolve2` merges every country into one feature it can't, so the tiny
-		// islands (Seychelles, Aldabra) get cleaned away. Simplify-then-dissolve keeps them.
+		// only shorelines remain (inland clip edges sit on the map frame). `-explode` first splits
+		// every multipart country into single-part features so `keep-shapes` protects each island
+		// individually through simplification — without it a small *part* of a larger country
+		// (e.g. Rodrigues within Mauritius) is dropped while the main island survives. Simplify
+		// BEFORE dissolving: once `-dissolve2` merges countries into one feature keep-shapes can't
+		// protect the specks, so explode → simplify → dissolve keeps the islands (incl. Rodrigues).
 		const wio = await runToGeojson(
-			`-i "${coastSrc}" -clip bbox=${WIO_CLIP} -simplify ${WIO_SIMPLIFY} keep-shapes -clean -dissolve2`,
+			`-i "${coastSrc}" -clip bbox=${WIO_CLIP} -explode -simplify ${WIO_SIMPLIFY} keep-shapes -clean -dissolve2`,
 			'wio.geojson',
 			tmp
 		);
