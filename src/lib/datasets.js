@@ -21,6 +21,11 @@ export const datasets = [
 		id: 'macaranga',
 		label: 'Macaranga',
 		csvPath: '/data/Macaranga_Kew_260604.csv'
+	},
+	{
+		id: 'sarcolaenaceae',
+		label: 'Sarcolaenaceae',
+		csvPath: '/data/Sarcolaenaceae_Kew_260703.csv'
 	}
 ];
 
