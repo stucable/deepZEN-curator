@@ -1,14 +1,35 @@
-deepZEN-curator  —  v1.2  (Ankarafantsika + Ranomafana + Macaranga, 2026-06-23)
-===============================================================================
+deepZEN-curator  —  v1.4  (Ankarafantsika + Ranomafana + Macaranga + Sarcolaenaceae, 2026-07-03)
+================================================================================================
 
 Offline herbarium image browser for field botanists in Madagascar.
-Ships with three datasets — Ankarafantsika, Ranomafana and Macaranga
-— switchable from the sidebar at runtime.
+Ships with four datasets — Ankarafantsika, Ranomafana, Macaranga and
+Sarcolaenaceae — switchable from the sidebar at runtime.
 Runs entirely on your laptop — no internet needed once you have the files.
 
 Three views — Images, Data and Map — let you browse specimen photos,
 edit the records behind them, and place georeferenced collections on a
 map of Madagascar.
+
+
+WHAT'S NEW IN v1.4
+------------------
+- New dataset: Sarcolaenaceae (from Kew) — a fourth dataset, pick it in
+  the sidebar selector. It is georeferenced, so it has a Map view.
+- The Map now places island collections that have no GPS coordinates.
+  Specimens recorded only as "Mauritius", "Réunion", "Seychelles",
+  "Comoros" or "Mayotte" are pinned to that island as an approximate
+  position (shown in the hover tooltip; never written back to your CSV).
+  They show on the Western Indian Ocean / Global maps, not Madagascar.
+- Specimens sitting on the exact same spot now stack into one numbered
+  dot. Click it to fan them out onto a ring and pick an individual
+  sheet; click again to collapse.
+- The Western Indian Ocean map now reaches across to mainland Africa
+  (for DNA outgroups), with country borders and labels.
+- Curation: "synonym folding" lets you bulk re-identify specimens under
+  an accepted name, and the specimen editor has more editable fields.
+  Selecting a region or hiding species in the map legend now narrows the
+  whole app — Images, Data and Map together — with a toggle for whether
+  to include specimens that have no coordinates.
 
 
 WHAT'S NEW IN v1.2
