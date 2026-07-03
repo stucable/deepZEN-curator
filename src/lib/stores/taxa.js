@@ -1,6 +1,6 @@
 import { writable, derived } from 'svelte/store';
 import { selectionPolygonStore, includeUnlocatedStore, hiddenSpeciesStore, mapExtentStore } from './map.js';
-import { pointInRing, inBbox, detectExtent, MADAGASCAR_BBOX, WIO_BBOX, WORLD_BBOX } from '$lib/utils/geo.js';
+import { pointInRing, inBbox, detectExtent, isOffMadagascarAnchor, MADAGASCAR_BBOX, WIO_BBOX, WORLD_BBOX } from '$lib/utils/geo.js';
 import { isUndetermined } from '$lib/utils/csv.js';
 
 /** Raw data loaded from CSV. null until loadSpeciesData() completes. */
@@ -39,18 +39,19 @@ export const typeStatusByImageFile = derived(taxaStore, ($taxa) => {
 });
 
 /**
- * Map of image-file basename → that specimen's { lat, lng }, for every image of a
- * georeferenced specimen. Powers the region-polygon image filter (browseSpecies):
- * a file's absence from this map means its specimen has no coordinates. Built like
- * typeStatusByImageFile — specimen-level, separate from the species view. Specimens
- * with a null lat or lng are deliberately skipped (absence == "no coordinates").
+ * Map of image-file basename → that specimen's display { lat, lng }, for every image of a
+ * mappable specimen. Powers the region-polygon image filter (browseSpecies): a file's absence
+ * from this map means its specimen has no plottable location. Built like typeStatusByImageFile
+ * — specimen-level, separate from the species view. Uses the DISPLAY coordinate (mapLat/mapLng
+ * — real GPS or a Mascarene island anchor), so an anchored sheet falls inside a region polygon
+ * over its island; specimens with neither GPS nor an anchor are skipped (absence == "no location").
  */
 export const imageFileLatLng = derived(taxaStore, ($taxa) => {
 	const map = new Map();
 	if (!$taxa) return map;
 	for (const s of $taxa.specimensByCatalogue.values()) {
-		if (s.lat == null || s.lng == null) continue;
-		for (const file of s.imageFiles) map.set(file, { lat: s.lat, lng: s.lng });
+		if (s.mapLat == null || s.mapLng == null) continue;
+		for (const file of s.imageFiles) map.set(file, { lat: s.mapLat, lng: s.mapLng });
 	}
 	return map;
 });
@@ -211,7 +212,7 @@ function speciesKeysInPolygon($taxa, polygon) {
 	if (!polygon || polygon.length < 3) return null;
 	const keys = new Set();
 	for (const s of $taxa.geolocatedSpecimens) {
-		if (pointInRing(s.lng, s.lat, polygon)) keys.add(s.currentDetermination);
+		if (pointInRing(s.mapLng, s.mapLat, polygon)) keys.add(s.currentDetermination);
 	}
 	return keys;
 }
@@ -491,16 +492,22 @@ export const filteredSpeciesCounts = derived(visibleSpecies, ($fs) => {
  * here (as MapView's plot does per point) keeps the sidebar's "Showing X of N" map count
  * in step with the dots plotted. Species with no in-extent matching specimen are excluded.
  */
-const mappedSpeciesKeys = derived([taxaStore, filterStore, activeMapBbox], ([$taxa, $filter, $bbox]) => {
-	const keys = new Set();
-	if (!$taxa) return keys;
-	const matchSpecimen = specimenSearchPredicate($filter);
-	for (const s of $taxa.geolocatedSpecimens) {
-		if (matchSpecimen && !matchSpecimen(s)) continue;
-		if (inBbox(s.lng, s.lat, $bbox)) keys.add(s.currentDetermination);
+const mappedSpeciesKeys = derived(
+	[taxaStore, filterStore, activeMapBbox, effectiveMapExtent],
+	([$taxa, $filter, $bbox, $extent]) => {
+		const keys = new Set();
+		if (!$taxa) return keys;
+		const matchSpecimen = specimenSearchPredicate($filter);
+		for (const s of $taxa.geolocatedSpecimens) {
+			if (matchSpecimen && !matchSpecimen(s)) continue;
+			// Island-anchored sheets aren't drawn on the Madagascar basemap — keep the count in
+			// step with the dots (see isOffMadagascarAnchor / MapView's plot).
+			if (isOffMadagascarAnchor(s, $extent)) continue;
+			if (inBbox(s.mapLng, s.mapLat, $bbox)) keys.add(s.currentDetermination);
+		}
+		return keys;
 	}
-	return keys;
-});
+);
 
 /**
  * Derived: count of determined species currently visible *and mapped* — determined
@@ -547,8 +554,8 @@ export const unidentifiedSpecimenCount = derived(
 			if (!s.catalogueNumber) continue;
 			if (!undet.has(s.currentDetermination)) continue;
 			if (hasPoly) {
-				const inPoly = s.lat != null && s.lng != null && pointInRing(s.lng, s.lat, $polygon);
-				const noCoords = s.lat == null || s.lng == null;
+				const inPoly = s.mapLat != null && s.mapLng != null && pointInRing(s.mapLng, s.mapLat, $polygon);
+				const noCoords = s.mapLat == null || s.mapLng == null;
 				if (!(inPoly || ($inc && noCoords))) continue;
 			}
 			n++;

@@ -8,6 +8,9 @@
 		unprojectXY,
 		inBbox,
 		pointInRing,
+		isOffMadagascarAnchor,
+		groupColocated,
+		burstRing,
 		viewBoxFor,
 		WIO_DEFAULT_VIEW
 	} from '$lib/utils/geo.js';
@@ -139,6 +142,7 @@
 		{ name: 'Mayotte', lng: 45.4, lat: -13.9 },
 		{ name: 'Réunion', lng: 55.5, lat: -22.1 },
 		{ name: 'Mauritius', lng: 57.7, lat: -19.3 },
+		{ name: 'Rodrigues', lng: 63.4, lat: -18.9 },
 		{ name: 'Seychelles', lng: 55.7, lat: -3.9 }
 	];
 	const wioLabels = $derived(
@@ -169,7 +173,7 @@
 	// colour assigned to each, the projected points, and how many fell off-map.
 	const plot = $derived.by(() => {
 		if (!$taxaStore)
-			return { points: [], byCat: new Map(), legend: [], offMap: 0, tooMany: false, speciesCount: 0, missing: [], keyKind: colourMode };
+			return { singles: [], stacks: [], byCat: new Map(), posByCat: new Map(), legend: [], offMap: 0, tooMany: false, speciesCount: 0, shownCount: 0, missing: [], keyKind: colourMode };
 
 		const filterKeys = new Set($filteredSpecies.map((s) => s.taxonomicName));
 		// Specimen-level filters (the Data table's selection + the Find-a-specimen filters)
@@ -190,7 +194,11 @@
 		for (const s of $taxaStore.geolocatedSpecimens) {
 			if (!filterKeys.has(s.currentDetermination)) continue;
 			if (matchSpecimen && !matchSpecimen(s)) continue;
-			if (!inBbox(s.lng, s.lat, activeBbox)) {
+			// Island-anchored sheets are WIO-island placements; their islands aren't drawn on the
+			// Madagascar basemap, so hide them there (the Madagascar view = real Madagascar records).
+			// Skipped silently — they're not "bad coordinates", just out of this extent's scope.
+			if (isOffMadagascarAnchor(s, extentId)) continue;
+			if (!inBbox(s.mapLng, s.mapLat, activeBbox)) {
 				offMap++;
 				continue;
 			}
@@ -234,7 +242,7 @@
 		const mappedByKey = new Map();
 		if (polygon && polygon.length >= 3) {
 			for (const s of $taxaStore.geolocatedSpecimens) {
-				if (!pointInRing(s.lng, s.lat, polygon)) continue;
+				if (!pointInRing(s.mapLng, s.mapLat, polygon)) continue;
 				if (matchSpecimen && !matchSpecimen(s)) continue;
 				const k = keyOf(s);
 				mappedByKey.set(k, (mappedByKey.get(k) ?? 0) + 1);
@@ -247,31 +255,57 @@
 		}
 		const tally = (k) => ({ mapped: mappedByKey.get(k) ?? 0, total: totalByKey.get(k) ?? 0 });
 
-		const tooMany = determinedKeys.length > PALETTE_SIZE;
+		// The colour cap follows the SHOWN species (those not hidden via the legend), so hiding
+		// out-group species down to ≤ PALETTE_SIZE trips the distinct colours back on. Hidden
+		// determined species keep a jade fallback swatch in the legend; indets stay grey and
+		// never count toward the cap.
+		const shownDetermined = determinedKeys.filter((k) => !isKeyHidden(k, $hiddenSpeciesStore));
+		const tooMany = shownDetermined.length > PALETTE_SIZE;
 		const colourByKey = new Map();
-		determinedKeys.forEach((k, i) =>
+		shownDetermined.forEach((k, i) =>
 			colourByKey.set(k, tooMany ? FALLBACK_COLOUR : colourForIndex(i))
 		);
+		for (const k of determinedKeys) if (!colourByKey.has(k)) colourByKey.set(k, FALLBACK_COLOUR);
 		greyKeys.forEach((k) => colourByKey.set(k, UNDETERMINED_COLOUR));
 
-		const points = inView.map((s) => {
-			const { x, y } = projectLngLat(s.lng, s.lat, activeBbox);
-			return { x, y, colour: colourByKey.get(keyOf(s)), specimen: s };
-		});
-		// Catalogue → specimen lookup so a pointerdown's target (which carries
-		// data-cat) resolves back to the specimen for tap-to-open.
-		const byCat = new Map(inView.map((s) => [s.catalogueNumber, s]));
+		// Plotted points exclude species hidden via the legend (hiding narrows the map, the
+		// Browse grid, the Curate table and the sidebar alike). The legend keys above still
+		// enumerate hidden species so they stay listed (greyed) and restorable.
+		const rawPoints = inView
+			.filter((s) => !$hiddenSpeciesStore.has(s.currentDetermination))
+			.map((s) => {
+				const { x, y } = projectLngLat(s.mapLng, s.mapLat, activeBbox);
+				return { x, y, colour: colourByKey.get(keyOf(s)), specimen: s };
+			});
+		// Group only EXACTLY-coincident points: island-anchored sheets share one island centroid
+		// (so they collapse to one count dot the user clicks to spiderfy), while distinct GPS
+		// points never collide and render as normal singles — zoom-independent, no fanning.
+		const { singles, stacks } = groupColocated(rawPoints);
+		// Catalogue → specimen (tap-to-open, data-cat) and catalogue → final DRAWN position. A
+		// stack member maps to its collapsed centre; the search-highlight ring reads this and
+		// falls back to projecting the raw coord for anything not plotted (e.g. a hidden species).
+		const byCat = new Map();
+		const posByCat = new Map();
+		for (const p of singles) {
+			byCat.set(p.specimen.catalogueNumber, p.specimen);
+			posByCat.set(p.specimen.catalogueNumber, { x: p.x, y: p.y });
+		}
+		for (const st of stacks) {
+			for (const m of st.members) {
+				byCat.set(m.specimen.catalogueNumber, m.specimen);
+				posByCat.set(m.specimen.catalogueNumber, { x: st.x, y: st.y });
+			}
+		}
 
 		// Legend rows: coloured keys first, then the grey pile. `name` is the grouping key
-		// (the hide target / clade), `label` its display text. Empty when there are too many
-		// coloured keys to legibly colour-code (points still render with the fallback colour).
+		// (the hide target / clade), `label` its display text. ALWAYS listed (even past the
+		// colour cap) so species stay pickable to hide/show — over the cap the determined rows
+		// just share the jade fallback swatch until hiding brings the shown count back to ≤16.
 		const labelFor = (k) => (byClade && k === '' ? '(unassigned clade)' : k);
-		const legend = tooMany
-			? []
-			: [
-					...determinedKeys.map((k) => ({ name: k, label: labelFor(k), colour: colourByKey.get(k), undetermined: false, ...tally(k) })),
-					...greyKeys.map((k) => ({ name: k, label: labelFor(k), colour: UNDETERMINED_COLOUR, undetermined: true, ...tally(k) }))
-				];
+		const legend = [
+			...determinedKeys.map((k) => ({ name: k, label: labelFor(k), colour: colourByKey.get(k), undetermined: false, ...tally(k) })),
+			...greyKeys.map((k) => ({ name: k, label: labelFor(k), colour: UNDETERMINED_COLOUR, undetermined: true, ...tally(k) }))
+		];
 
 		// Filtered species with no plottable point — un-georeferenced or off-extent. Always
 		// species-level (it lists species, not clades) so the count reconciles with the sidebar.
@@ -281,7 +315,7 @@
 			.filter((k) => !presentSpecies.has(k))
 			.map((k) => ({ name: k, label: k, undetermined: isUndetermined(k), mapped: 0, total: speciesTotalByKey.get(k) ?? 0 }));
 
-		return { points, byCat, legend, offMap, tooMany, speciesCount: determinedKeys.length, missing, keyKind: colourMode };
+		return { singles, stacks, byCat, posByCat, legend, offMap, tooMany, speciesCount: determinedKeys.length, shownCount: shownDetermined.length, missing, keyKind: colourMode };
 	});
 
 	// ---- Legend selection (app-wide show/hide) -------------------------------
@@ -289,11 +323,12 @@
 	// map-drawn narrowing like the region polygon: it removes them from the points
 	// here AND from the Browse grid, the Curate table, and the sidebar counts. The
 	// legend still lists hidden species (greyed) so they can be restored.
-	const visiblePoints = $derived(
-		plot.points.filter((p) => !$hiddenSpeciesStore.has(p.specimen.currentDetermination))
-	);
+	// Specimens actually drawn (singles + every stack member). Hidden species are already
+	// removed upstream in `plot`, so this is just the footer "N points · M species" tally.
+	const renderedSpecimens = $derived([...plot.singles, ...plot.stacks.flatMap((s) => s.members)]);
+	const visiblePointCount = $derived(renderedSpecimens.length);
 	const visibleSpeciesCount = $derived(
-		new Set(visiblePoints.map((p) => p.specimen.currentDetermination)).size
+		new Set(renderedSpecimens.map((p) => p.specimen.currentDetermination)).size
 	);
 	// True when every species currently in the legend is hidden — drives the
 	// header toggle's label (Show all ⇄ Hide all).
@@ -330,10 +365,14 @@
 	let searchFocus = $state(null); // last-selected match, kept ringed until next search
 
 	const SEARCH_LIMIT = 25;
-	// A specimen is "locatable" if it has valid in-bbox coordinates (so it plots and
-	// can be panned to). Un-georeferenced specimens are still searchable — they're the
-	// ones a curator georeferences via the modal's "Set location on map".
-	const isLocatable = (s) => s.lat != null && s.lng != null && inBbox(s.lng, s.lat, activeBbox);
+	// A specimen is "locatable" if it has a valid in-bbox DISPLAY coordinate (real GPS or an
+	// island anchor), so it plots and can be panned to. Specimens with neither are still
+	// searchable — the ones a curator georeferences via the modal's "Set location on map".
+	const isLocatable = (s) =>
+		s.mapLat != null &&
+		s.mapLng != null &&
+		!isOffMadagascarAnchor(s, extentId) &&
+		inBbox(s.mapLng, s.mapLat, activeBbox);
 	const searchMatches = $derived.by(() => {
 		const q = query.trim().toLowerCase();
 		if (!q || !$taxaStore) return [];
@@ -362,7 +401,7 @@
 	}
 	function selectSearchResult(s) {
 		if (isLocatable(s)) {
-			panTo(s.lng, s.lat);
+			panTo(s.mapLng, s.mapLat);
 			searchFocus = s;
 		} else {
 			searchFocus = null; // nothing to pan to / ring; open the modal to georeference it
@@ -450,6 +489,10 @@
 	// `click` retargets to the parent <svg>, so a point's own click is unreliable.
 	// Handling the whole gesture at the svg level sidesteps that entirely.
 	let pressedSpecimen = null;
+	// The stack hub the press started on (its `data-stack` key), if any. A tap on a hub
+	// toggles its spiderfy burst; `explodedKey` is the open stack's centre key (one at a time).
+	let pressedStack = null;
+	let explodedKey = $state(null);
 	// Dragging an existing point to reposition it: `draggingPoint` once a press on a
 	// point crosses the threshold, `dragPos` the live SVG position (preview marker),
 	// `dragResult` the dropped {specimen, lng, lat} handed to the click phase to open
@@ -461,6 +504,15 @@
 	// Pixels the pointer must travel before a press becomes a pan (not a tap).
 	const PAN_THRESHOLD = 4;
 
+	// Collapse any open spiderfy when the map context changes under it (extent, colour
+	// grouping, or the filtered species set) so a stale key can't re-expand a re-formed stack.
+	$effect(() => {
+		void activeBbox;
+		void colourMode;
+		void $filteredSpecies;
+		explodedKey = null;
+	});
+
 	function specimenForTarget(target) {
 		const cat = target?.getAttribute?.('data-cat');
 		return cat ? plot.byCat.get(cat) : null;
@@ -468,12 +520,14 @@
 
 	function onPointerDown(e) {
 		pressedSpecimen = null;
+		pressedStack = null;
 		dragResult = null; // clears any uncollected drag (e.g. a drag with no trailing click)
 		if (drawing || placing) return; // clicks add vertices / set location instead
 		// Deliberately NOT using setPointerCapture: it would retarget pointer events
 		// to the svg. Panning works without capture while the pointer stays over the
 		// map; onpointerleave ends a drag that wanders off.
 		pressedSpecimen = specimenForTarget(e.target);
+		pressedStack = e.target?.getAttribute?.('data-stack') ?? null;
 		panStart = {
 			cx: e.clientX,
 			cy: e.clientY,
@@ -501,6 +555,7 @@
 		}
 		panning = true;
 		pressedSpecimen = null; // a pan is not a tap
+		pressedStack = null;
 		const dx = (dxPx * viewBox.w) / panStart.rect.width;
 		const dy = (dyPx * viewBox.h) / panStart.rect.height;
 		viewBox = { ...viewBox, x: panStart.vbx - dx, y: panStart.vby - dy };
@@ -520,18 +575,27 @@
 		panStart = null;
 	}
 
+	// Zoom keeping the point at fractional position (fx, fy) of the viewport fixed. factor < 1
+	// zooms in, > 1 zooms out; clamped to [4% of base, full base].
+	function zoomAt(fx, fy, factor) {
+		const cursorX = viewBox.x + fx * viewBox.w;
+		const cursorY = viewBox.y + fy * viewBox.h;
+		const minW = base.w * 0.04;
+		const newW = Math.min(base.w, Math.max(minW, viewBox.w * factor));
+		const newH = viewBox.h * (newW / viewBox.w);
+		viewBox = { x: cursorX - fx * newW, y: cursorY - fy * newH, w: newW, h: newH };
+	}
 	function handleWheel(e) {
 		e.preventDefault();
 		const rect = svgEl.getBoundingClientRect();
 		const fx = (e.clientX - rect.left) / rect.width;
 		const fy = (e.clientY - rect.top) / rect.height;
-		const cursorX = viewBox.x + fx * viewBox.w;
-		const cursorY = viewBox.y + fy * viewBox.h;
-		const factor = e.deltaY < 0 ? 0.85 : 1.18;
-		const minW = base.w * 0.04;
-		const newW = Math.min(base.w, Math.max(minW, viewBox.w * factor));
-		const newH = viewBox.h * (newW / viewBox.w);
-		viewBox = { x: cursorX - fx * newW, y: cursorY - fy * newH, w: newW, h: newH };
+		zoomAt(fx, fy, e.deltaY < 0 ? 0.85 : 1.18);
+	}
+	// Discrete zoom for the on-map +/- buttons — for touchpad / no-mouse users who can't
+	// wheel-zoom. Zooms about the map centre. dir > 0 = in, dir < 0 = out.
+	function zoomStep(dir) {
+		zoomAt(0.5, 0.5, dir > 0 ? 0.7 : 1 / 0.7);
 	}
 
 	// Attach wheel non-passively so preventDefault works (Svelte may register it
@@ -634,11 +698,22 @@
 			return;
 		}
 		if (!drawing) {
-			// A tap on a point (pressedSpecimen captured at pointerdown, not panned away).
+			// A tap on a stack hub toggles its spiderfy burst (one open at a time).
+			if (pressedStack) {
+				explodedKey = explodedKey === pressedStack ? null : pressedStack;
+				pressedStack = null;
+				return;
+			}
+			// A tap on a point (pressedSpecimen captured at pointerdown, not panned away)
+			// opens its modal and collapses any open spider.
 			if (pressedSpecimen) {
 				editing = pressedSpecimen;
 				pressedSpecimen = null;
+				explodedKey = null;
+				return;
 			}
+			// A tap on empty map dismisses any open spider.
+			explodedKey = null;
 			return;
 		}
 		const p = svgPoint(e);
@@ -843,7 +918,7 @@
 		</div>
 
 		<span class="ml-auto text-xs text-gray-500 dark:text-gray-400">
-			{visiblePoints.length} points · {visibleSpeciesCount} species
+			{visiblePointCount} points · {visibleSpeciesCount} species
 			{#if $hiddenSpeciesStore.size > 0}
 				· <span class="text-gray-400">{$hiddenSpeciesStore.size} hidden</span>
 			{/if}
@@ -953,9 +1028,11 @@
 						/>
 					{/if}
 
-					<!-- Specimen points. Click handling lives on the svg (pointerdown +
-					     pointerup) via data-cat, not on the circle's own click. -->
-					{#each visiblePoints as p, i (i)}
+					<!-- Single specimen points: normal uniform dots. Click/hover handled at the
+					     svg level via data-cat (pointerdown → click), not the circle's own click.
+					     Island-anchored single sheets look like GPS dots; their "approximate"
+					     provenance still shows in the hover tooltip. -->
+					{#each plot.singles as p (p.specimen.catalogueNumber)}
 						<circle
 							cx={p.x}
 							cy={p.y}
@@ -975,11 +1052,78 @@
 						/>
 					{/each}
 
+					<!-- Exact-coincident stacks (island anchors, true duplicates): one count dot
+					     sitting on the location. Click the hub (data-stack) to spiderfy its members
+					     onto a ring; while open, each member is a full marker with its own tooltip
+					     and click-to-open. Legs + members draw under the hub so the hub stays
+					     clickable to collapse. -->
+					{#each plot.stacks as st (`${st.x},${st.y}`)}
+						{@const open = explodedKey === `${st.x},${st.y}`}
+						{@const uniform = st.members.every((m) => m.colour === st.members[0].colour)}
+						{#if open}
+							{@const ring = burstRing(st.members.length, pointRadius * Math.max(6, st.members.length))}
+							{#each st.members as m, i (`leg:${m.specimen.catalogueNumber}`)}
+								<line
+									x1={st.x}
+									y1={st.y}
+									x2={st.x + ring[i].dx}
+									y2={st.y + ring[i].dy}
+									stroke="#9ca3af"
+									stroke-width={thinStroke}
+									pointer-events="none"
+								/>
+							{/each}
+							{#each st.members as m, i (m.specimen.catalogueNumber)}
+								<circle
+									cx={st.x + ring[i].dx}
+									cy={st.y + ring[i].dy}
+									r={pointRadius}
+									fill={m.colour}
+									fill-opacity="0.95"
+									stroke="#1f2937"
+									stroke-width={pointStroke}
+									data-cat={m.specimen.catalogueNumber}
+									style:pointer-events={drawing || placing ? 'none' : 'auto'}
+									class={drawing || placing ? '' : 'cursor-pointer'}
+									role="button"
+									aria-label={`${m.specimen.currentDetermination} ${m.specimen.catalogueNumber}`}
+									onmouseenter={(e) => showTip(m.specimen, e)}
+									onmousemove={moveTip}
+									onmouseleave={hideTip}
+								/>
+							{/each}
+						{/if}
+						<circle
+							cx={st.x}
+							cy={st.y}
+							r={pointRadius * 1.3}
+							fill={uniform ? st.members[0].colour : '#6b7280'}
+							fill-opacity="0.95"
+							stroke="#1f2937"
+							stroke-width={pointStroke}
+							data-stack={`${st.x},${st.y}`}
+							style:pointer-events={drawing || placing ? 'none' : 'auto'}
+							class={drawing || placing ? '' : 'cursor-pointer'}
+							role="button"
+							aria-label={`${st.members.length} specimens at one location — click to ${open ? 'collapse' : 'expand'}`}
+						/>
+						<text
+							x={st.x}
+							y={st.y}
+							text-anchor="middle"
+							dominant-baseline="central"
+							font-size={pointRadius * 1.3}
+							fill="white"
+							pointer-events="none"
+							style="font-weight:600"
+						>{st.members.length}</text>
+					{/each}
+
 					<!-- Search highlight rings (live matches + last-selected), drawn on top
 					     and locatable even if a filter or legend toggle hid their points. -->
 					{#each searchMatches as m (m.catalogueNumber)}
 						{#if isLocatable(m)}
-							{@const pt = projectLngLat(m.lng, m.lat, activeBbox)}
+							{@const pt = plot.posByCat.get(m.catalogueNumber) ?? projectLngLat(m.mapLng, m.mapLat, activeBbox)}
 							<circle
 								cx={pt.x}
 								cy={pt.y}
@@ -991,8 +1135,8 @@
 							/>
 						{/if}
 					{/each}
-					{#if searchFocus && inBbox(searchFocus.lng, searchFocus.lat, activeBbox)}
-						{@const pf = projectLngLat(searchFocus.lng, searchFocus.lat, activeBbox)}
+					{#if searchFocus && inBbox(searchFocus.mapLng, searchFocus.mapLat, activeBbox)}
+						{@const pf = plot.posByCat.get(searchFocus.catalogueNumber) ?? projectLngLat(searchFocus.mapLng, searchFocus.mapLat, activeBbox)}
 						<circle
 							cx={pf.x}
 							cy={pf.y}
@@ -1039,6 +1183,11 @@
 						<div class="text-gray-600 dark:text-gray-300">
 							{hovered.recordedBy || '—'}{hovered.recordNumber ? ` ${hovered.recordNumber}` : ''}
 						</div>
+						{#if hovered.approximate}
+							<div class="text-amber-700 dark:text-amber-400">
+								Approximate — placed at {hovered.anchorLabel || 'island'} (no GPS)
+							</div>
+						{/if}
 					</div>
 				{/if}
 
@@ -1080,6 +1229,26 @@
 						</div>
 					</div>
 				{/if}
+
+				<!-- Zoom buttons (top-right) — for touchpad / no-mouse users who can't wheel-zoom. -->
+				<div
+					class="absolute right-2 top-2 z-10 flex flex-col overflow-hidden rounded-md border border-gray-300 bg-white/90 shadow-sm dark:border-gray-600 dark:bg-gray-800/90"
+				>
+					<button
+						type="button"
+						onclick={() => zoomStep(1)}
+						aria-label="Zoom in"
+						title="Zoom in"
+						class="flex size-7 cursor-pointer items-center justify-center text-lg leading-none text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+					>+</button>
+					<button
+						type="button"
+						onclick={() => zoomStep(-1)}
+						aria-label="Zoom out"
+						title="Zoom out"
+						class="flex size-7 cursor-pointer items-center justify-center border-t border-gray-300 text-lg leading-none text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+					>−</button>
+				</div>
 			{/if}
 		</div>
 
@@ -1105,6 +1274,12 @@
 				{/if}
 
 				<div class="thin-scrollbar flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+					{#if plot.tooMany}
+						<p class="text-gray-500 dark:text-gray-400">
+							{plot.shownCount} {plot.keyKind === 'clade' ? 'clades' : 'species'} shown — too many to
+							colour-code; hide some to reach {PALETTE_SIZE} for distinct colours.
+						</p>
+					{/if}
 					{#if plot.legend.length > 0}
 						<ul class="flex flex-col gap-1">
 							{#each plot.legend as item (item.name)}
@@ -1134,11 +1309,6 @@
 								</li>
 							{/each}
 						</ul>
-					{:else if plot.tooMany}
-						<p class="text-gray-500 dark:text-gray-400">
-							{plot.speciesCount} {plot.keyKind === 'clade' ? 'clades' : 'species'} shown — too many to
-							colour-code. Filter to {PALETTE_SIZE} or fewer (sidebar) to see distinct colours and a legend.
-						</p>
 					{/if}
 
 					{#if plot.missing.length > 0}

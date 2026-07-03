@@ -171,7 +171,7 @@
 			filterStore.set(defaultFilterState());
 			clearSelection();
 			showAllSpecies();
-			mapExtentStore.set('auto'); // re-auto-detect the map extent for the new dataset
+			mapExtentStore.set('madagascar'); // each dataset opens on the Madagascar view
 			folderHandleStore.set(null);
 			pendingFolderHandleStore.set(null);
 			(async () => {

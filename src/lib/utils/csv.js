@@ -1,4 +1,8 @@
 import Papa from 'papaparse';
+// Relative (not $lib) so the Node validators that import this module — scripts/validate-data.js,
+// scripts/verify-phaseb-*.js — resolve it too. geo.js / island-anchors.js have no $lib imports.
+import { resolveMapCoords } from './geo.js';
+import { ISLAND_ANCHORS } from '../data/island-anchors.js';
 
 /** Canonical growth-habit vocabulary (lowercase singular). CSV values are matched against this. */
 export const KNOWN_HABITS = ['tree', 'shrub', 'herb', 'liana', 'epiphyte'];
@@ -303,9 +307,12 @@ export function buildSpeciesView(specimensByCatalogue) {
 export function rebuildView(specimensByCatalogue) {
 	const view = buildSpeciesView(specimensByCatalogue);
 	// Only real (barcoded) specimens can anchor a map point to an image, so the
-	// barcode-less placeholders are excluded even if they carry coordinates.
+	// barcode-less placeholders are excluded even if they carry coordinates. Filters on
+	// the DISPLAY coordinate (mapLat/mapLng — real GPS or a Mascarene island anchor), so
+	// island-anchored sheets without recorded GPS still plot; pure-Madagascar datasets are
+	// unaffected (no anchor matches → mapLat/mapLng equal the recorded lat/lng or stay null).
 	const geolocatedSpecimens = [...specimensByCatalogue.values()].filter(
-		(s) => s.catalogueNumber && s.lat != null && s.lng != null
+		(s) => s.catalogueNumber && s.mapLat != null && s.mapLng != null
 	);
 	return { ...view, specimensByCatalogue, geolocatedSpecimens };
 }
@@ -388,6 +395,18 @@ export function parseSpeciesCsv(text) {
 		const order = row.Order?.trim() || '';
 		const vernacularName = row.VernacularName?.trim() || '';
 
+		// Recorded (honest) coordinates and their text context. The display coordinate
+		// (mapLat/mapLng) is derived from these: real GPS when present, else a Mascarene
+		// island anchor resolved from the island/country/locality name (flagged approximate).
+		// Recorded lat/lng stay untouched so the edit modal and CSV write-back never gain a
+		// fabricated coordinate; the anchor is a map-display position only.
+		const lat = parseLat(row.DecimalLatitude);
+		const lng = parseLng(row.DecimalLongitude);
+		const locality = row.Locality?.trim() || '';
+		const country = row.Country?.trim() || '';
+		const island = row.Island?.trim() || '';
+		const mapCoords = resolveMapCoords({ lat, lng, island, country, locality }, ISLAND_ANCHORS);
+
 		// Barcode-less rows get a synthetic, collision-proof key (the leading
 		// space can't appear in a trimmed catalogue number) so they survive in
 		// the Map without masquerading as a real specimen.
@@ -421,14 +440,25 @@ export function parseSpeciesCsv(text) {
 			// thumbnail. hasImage mirrors imageFiles.length > 0 (a flag for the map).
 			imageFiles: [...rowImageFiles],
 			hasImage: rowImageFiles.length > 0 && !!catalogueNumber,
-			lat: parseLat(row.DecimalLatitude),
-			lng: parseLng(row.DecimalLongitude),
-			locality: row.Locality?.trim() || '',
+			lat,
+			lng,
+			// Display coordinate + provenance — map-purpose readers use these (NOT lat/lng).
+			// `coordinateSource`: 'gps' | 'island' | null; `approximate` is true only for an
+			// island anchor; `anchorLabel` is the island name (e.g. "Mauritius") or ''.
+			// `island` keeps the optional dedicated column so resolveMapCoords can re-run when
+			// the modal edits a coordinate (the approximate ⇄ GPS upgrade path).
+			island,
+			mapLat: mapCoords.mapLat,
+			mapLng: mapCoords.mapLng,
+			coordinateSource: mapCoords.coordinateSource,
+			approximate: mapCoords.approximate,
+			anchorLabel: mapCoords.anchorLabel,
+			locality,
 			// Collection metadata for map hover tips (Darwin Core terms).
 			recordedBy: row.RecordedBy?.trim() || '',
 			recordNumber: row.RecordNumber?.trim() || '',
 			collectionDate: row.CollectionDate?.trim() || '',
-			country: row.Country?.trim() || '',
+			country,
 			institutionCode: row.InstitutionCode?.trim() || deriveInstitutionCode(catalogueNumber),
 				editedAt: row.EditedAt?.trim() || '',
 			// Lossless passthrough: never read by the species view / filters / map,
