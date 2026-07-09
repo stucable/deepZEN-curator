@@ -17,7 +17,11 @@ import { folderHandleStore } from '$lib/stores/folder.js';
  * re-initialises it with its own images, not the most recently clicked ones.
  */
 
-const VIEWER_URL = '/viewer';
+// Trailing slash is load-bearing: the viewer route is prerendered to
+// build/viewer/index.html (see src/routes/viewer/+page.js), so `/viewer/` is what
+// `python -m http.server` serves directly in the shipped build. Without the slash
+// the field server 404s and no image opens for zooming.
+const VIEWER_URL = '/viewer/';
 
 let listenerInstalled = false;
 /** One entry per opened viewer window: { win, payload }. Pruned once the window closes. */
