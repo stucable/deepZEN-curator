@@ -1,5 +1,5 @@
-deepZEN-curator  —  v1.4  (Ankarafantsika + Ranomafana + Macaranga + Sarcolaenaceae, 2026-07-03)
-================================================================================================
+deepZEN-curator  —  v1.4.1  (Ankarafantsika + Ranomafana + Macaranga + Sarcolaenaceae, 2026-07-09)
+==================================================================================================
 
 Offline herbarium image browser for field botanists in Madagascar.
 Ships with four datasets — Ankarafantsika, Ranomafana, Macaranga and
@@ -9,6 +9,16 @@ Runs entirely on your laptop — no internet needed once you have the files.
 Three views — Images, Data and Map — let you browse specimen photos,
 edit the records behind them, and place georeferenced collections on a
 map of Madagascar.
+
+
+WHAT'S NEW IN v1.4.1
+--------------------
+- Fixed: clicking a thumbnail to open the full-size, zoomable image now
+  works again in the installed version (launched from start.bat on
+  Windows or start.command on a Mac). A change in v1.4 had stopped the
+  image window from opening once the app was run from the zip — the
+  picture would simply not appear. It now opens in its own tab as before,
+  with scroll-to-zoom and the arrow keys to page through a species.
 
 
 WHAT'S NEW IN v1.4
@@ -439,7 +449,7 @@ REPORTING ISSUES / GETTING UPDATES
 ----------------------------------
 - If something looks wrong (missing species, broken image, weird
   filter behaviour), email Stuart with a screenshot and the
-  version number at the top of this file (v1.2).
+  version number at the top of this file (v1.4.1).
 - New versions will arrive by email as a small zip. Unzip over
   the old folder (or delete the old folder first to avoid stale
   cached files), then double-click start.bat as before.
