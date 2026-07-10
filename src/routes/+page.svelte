@@ -1,7 +1,7 @@
 <script>
 	import { onMount } from 'svelte';
 	import { loadSpeciesData, parseSpeciesCsv, applyIdentificationLog, CsvSchemaError } from '$lib/utils/csv.js';
-	import { taxaStore, taxaSourceStore, taxaSourceFilenameStore, csvLoadErrorStore, identificationLogStore, filterStore, browseSpecies, DEFAULT_HABITS } from '$lib/stores/taxa.js';
+	import { taxaStore, taxaSourceStore, taxaSourceFilenameStore, taxaSourceLastModifiedStore, csvLoadErrorStore, identificationLogStore, filterStore, browseSpecies, DEFAULT_HABITS } from '$lib/stores/taxa.js';
 	import {
 		folderHandleStore,
 		pendingFolderHandleStore,
@@ -107,6 +107,7 @@
 						taxaStore.set(overlaid);
 						taxaSourceStore.set('custom');
 						taxaSourceFilenameStore.set(custom.filename);
+						taxaSourceLastModifiedStore.set(custom.lastModified);
 						csvLoadErrorStore.set(null);
 						console.log(`[${ds.id} | custom ${custom.filename}] CSV loaded:`, Object.keys(data.speciesByName).length, 'species,', data.allFamilies.length, 'families');
 						return;
@@ -137,6 +138,7 @@
 			taxaStore.set(overlaid);
 			taxaSourceStore.set('shipped');
 			taxaSourceFilenameStore.set(null);
+			taxaSourceLastModifiedStore.set(null);
 			csvLoadErrorStore.set(customLoadError);
 			console.log(`[${ds.id} | shipped] CSV loaded:`, Object.keys(data.speciesByName).length, 'species,', data.allFamilies.length, 'families');
 		} catch (err) {
@@ -164,6 +166,7 @@
 			taxaStore.set(null);
 			taxaSourceStore.set(null);
 			taxaSourceFilenameStore.set(null);
+			taxaSourceLastModifiedStore.set(null);
 			csvLoadErrorStore.set(null);
 			identificationLogStore.set([]);
 			editingSpecimenStore.set(null);

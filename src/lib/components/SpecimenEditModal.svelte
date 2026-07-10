@@ -1,6 +1,13 @@
 <script>
 	import { onMount, untrack } from 'svelte';
-	import { taxaStore, identificationLogStore, typeStatusOptions } from '$lib/stores/taxa.js';
+	import {
+		taxaStore,
+		identificationLogStore,
+		typeStatusOptions,
+		taxaSourceStore,
+		taxaSourceFilenameStore,
+		taxaSourceLastModifiedStore
+	} from '$lib/stores/taxa.js';
 	import { folderHandleStore } from '$lib/stores/folder.js';
 	import { currentDatasetStore } from '$lib/stores/dataset.js';
 	import { curatorNameStore, curatorHerbariumStore } from '$lib/stores/curator.js';
@@ -116,6 +123,12 @@
 		});
 	}
 
+	function setOverrideSource({ filename, lastModified }) {
+		taxaSourceStore.set('custom');
+		taxaSourceFilenameStore.set(filename);
+		taxaSourceLastModifiedStore.set(lastModified);
+	}
+
 	async function save() {
 		errorMsg = null;
 		const latTrim = lat.trim();
@@ -168,55 +181,82 @@
 			return;
 		}
 
+		const sourceMap = $taxaStore.specimensByCatalogue;
+		const sourceSpecimen = sourceMap.get(specimen.catalogueNumber) ?? specimen;
+		const nextMap = new Map(sourceMap);
+		let nextSpecimen = { ...sourceSpecimen };
+		let correctionPersisted = false;
+		let identificationEntry = null;
+
+		if (correctionChanged) {
+			Object.assign(nextSpecimen, {
+				lat: latVal,
+				lng: lngVal,
+				country: country.trim(),
+				institutionCode: institutionCode.trim(),
+				recordedBy: recordedBy.trim(),
+				recordNumber: recordNumber.trim(),
+				typeStatus: typeStatus.trim(),
+				typeName: typeName.trim(),
+				leafSample: leafVal,
+				dnaExtraction: dnaExtractionTrim,
+				dnaSequenced: dnaSequencedVal,
+				dnaNotes: dnaNotesTrim,
+				editedAt: now
+			});
+			// Re-derive display coordinates on the clone. Shared state remains untouched
+			// until every requested file operation has succeeded.
+			Object.assign(nextSpecimen, resolveMapCoords(nextSpecimen, ISLAND_ANCHORS));
+			nextMap.set(specimen.catalogueNumber, nextSpecimen);
+		}
+
+		if (logIdentification) {
+			identificationEntry = {
+				catalogueNumber: specimen.catalogueNumber,
+				scientificName: detChanged ? newDet : specimen.currentDetermination,
+				identifier: identifierTrim,
+				herbarium: herbariumTrim,
+				identificationDate: identifiedOn || now.slice(0, 10),
+				remarks: remarksTrim
+			};
+		}
+
 		saving = true;
 		try {
-			// Re-identification (or a note-only re-affirmation) → append-only entry in
-			// the identifications log. A note-only entry keeps the current name.
-			if (logIdentification) {
-				const scientificName = detChanged ? newDet : specimen.currentDetermination;
-				const entry = {
-					catalogueNumber: specimen.catalogueNumber,
-					scientificName,
-					identifier: identifierTrim,
-					herbarium: herbariumTrim,
-					identificationDate: identifiedOn || now.slice(0, 10),
-					remarks: remarksTrim
-				};
-				await appendIdentification(folder, ds, entry, { user });
-				specimen.currentDetermination = scientificName;
-				identificationLogStore.update((list) => [...list, entry]);
-				// Make the typed herbarium the curator's sticky default for next time.
+			// Corrections are an idempotent full-file replacement, so write them first.
+			// If the later append fails, retrying safely rewrites the same correction
+			// before retrying the identification (whose exact tail is de-duplicated).
+			if (correctionChanged) {
+				const override = await writeSpecimenOverride(folder, ds, nextMap, {
+					filename: $taxaSourceFilenameStore ?? undefined,
+					user,
+					expectedLastModified: $taxaSourceLastModifiedStore
+				});
+				correctionPersisted = true;
+				setOverrideSource(override);
+			}
+
+			if (identificationEntry) {
+				await appendIdentification(folder, ds, identificationEntry, { user });
+				nextSpecimen = { ...nextSpecimen, currentDetermination: identificationEntry.scientificName };
+				nextMap.set(specimen.catalogueNumber, nextSpecimen);
+				identificationLogStore.update((list) => [...list, identificationEntry]);
 				if (herbariumTrim) curatorHerbariumStore.set(herbariumTrim);
 			}
-			// Other edits → current-value correction in the specimen override CSV.
-			// TaxonomicName stays the original determination (serializer writes it);
-			// currentDetermination is owned by the log above.
-			if (correctionChanged) {
-				specimen.lat = latVal;
-				specimen.lng = lngVal;
-				specimen.country = country.trim();
-				specimen.institutionCode = institutionCode.trim();
-				specimen.recordedBy = recordedBy.trim();
-				specimen.recordNumber = recordNumber.trim();
-				specimen.typeStatus = typeStatus.trim();
-				specimen.typeName = typeName.trim();
-				specimen.leafSample = leafVal;
-				specimen.dnaExtraction = dnaExtractionTrim;
-				specimen.dnaSequenced = dnaSequencedVal;
-				specimen.dnaNotes = dnaNotesTrim;
-				specimen.editedAt = now;
-				// Re-derive the display coordinate now that lat/lng/country may have changed.
-				// A coordinate-less island sheet given a precise GPS upgrades from approximate
-				// (hollow) to a solid dot — and the reverse — immediately, before rebuildView
-				// re-filters the map. Recorded lat/lng (written above) stay the honest source.
-				Object.assign(specimen, resolveMapCoords(specimen, ISLAND_ANCHORS));
-				await writeSpecimenOverride(folder, ds, $taxaStore.specimensByCatalogue, { user });
-			}
-			// Regroup the species view + refresh dropdowns/map from the mutated map.
-			taxaStore.set(rebuildView($taxaStore.specimensByCatalogue));
+
+			taxaStore.set(rebuildView(nextMap));
 			onClose();
 		} catch (err) {
-			errorMsg = err?.message || 'Could not save — check folder write permission.';
+			const reason = err?.message || 'check folder write permission.';
+			if (correctionPersisted && identificationEntry) {
+				// The correction is durable even though the separate log append failed.
+				// Reflect that successful half in every view while keeping this modal open;
+				// retrying rewrites the same candidate and finishes the idempotent append.
+				taxaStore.set(rebuildView(nextMap));
+				errorMsg = `Corrections were saved, but the identification was not. Retry Save to finish it. ${reason}`;
+			} else {
+				errorMsg = reason;
+			}
 			saving = false;
 		}
 	}

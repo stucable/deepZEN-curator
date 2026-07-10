@@ -1,7 +1,7 @@
 import { writable, derived } from 'svelte/store';
 import { selectionPolygonStore, includeUnlocatedStore, hiddenSpeciesStore, mapExtentStore } from './map.js';
-import { pointInRing, inBbox, detectExtent, isOffMadagascarAnchor, MADAGASCAR_BBOX, WIO_BBOX, WORLD_BBOX } from '$lib/utils/geo.js';
-import { isUndetermined } from '$lib/utils/csv.js';
+import { pointInRing, inBbox, detectExtent, isOffMadagascarAnchor, MADAGASCAR_BBOX, WIO_BBOX, WORLD_BBOX } from '../utils/geo.js';
+import { isUndetermined } from '../utils/csv.js';
 
 /** Raw data loaded from CSV. null until loadSpeciesData() completes. */
 export const taxaStore = writable(null);
@@ -98,6 +98,9 @@ export const taxaSourceStore = writable(null);
  * is loaded. Drives the sidebar's "Using <file> from this folder" banner.
  */
 export const taxaSourceFilenameStore = writable(null);
+
+/** Last-modified timestamp of the loaded custom override, or null for shipped data. */
+export const taxaSourceLastModifiedStore = writable(null);
 
 /**
  * Default-selected growth habits (tree + shrub). Field ID work focuses on woody
@@ -309,6 +312,27 @@ export function specimenSearchPredicate($filter) {
 	};
 }
 
+/** Species determinations represented by barcoded specimens matching `predicate`. */
+export function matchingDeterminationKeys(specimensByCatalogue, predicate) {
+	const keys = new Set();
+	if (!predicate) return keys;
+	for (const specimen of specimensByCatalogue.values()) {
+		if (specimen.catalogueNumber && predicate(specimen)) {
+			keys.add(specimen.currentDetermination);
+		}
+	}
+	return keys;
+}
+
+/** Region predicate shared by the Data view and regression checks. Uses display coordinates. */
+export function specimenPassesRegion(specimen, polygon, includeUnlocated, regionKeys) {
+	if (!polygon || polygon.length < 3) return true;
+	if (specimen.mapLat != null && specimen.mapLng != null) {
+		return pointInRing(specimen.mapLng, specimen.mapLat, polygon);
+	}
+	return includeUnlocated && !!regionKeys?.has(specimen.currentDetermination);
+}
+
 /**
  * Apply the species-level sidebar filters to a species array: the FILTER_FIELDS
  * dropdowns/pills (via applyFilters) plus the free-text Search box (substring match
@@ -342,8 +366,8 @@ function filterSpeciesArray(speciesArr, $filter) {
  * counts read `visibleSpecies` below, which subtracts the hidden set.
  */
 export const filteredSpecies = derived(
-	[taxaStore, filterStore, sortStore, regionSpeciesKeys, specimenByImageFile],
-	([$taxa, $filter, $sort, $regionKeys, $byImg]) => {
+	[taxaStore, filterStore, sortStore, regionSpeciesKeys],
+	([$taxa, $filter, $sort, $regionKeys]) => {
 		if (!$taxa) return [];
 
 		const source =
@@ -358,7 +382,8 @@ export const filteredSpecies = derived(
 		// Kept out of filterSpeciesArray / the option-count machinery, like the search.
 		const matchSpecimen = specimenSearchPredicate($filter);
 		if (matchSpecimen) {
-			result = result.filter((s) => s.images.some((f) => matchSpecimen($byImg.get(f))));
+			const matchingKeys = matchingDeterminationKeys($taxa.specimensByCatalogue, matchSpecimen);
+			result = result.filter((s) => matchingKeys.has(s.taxonomicName));
 		}
 
 		if (!$regionKeys) return result;

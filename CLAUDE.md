@@ -71,6 +71,7 @@ scripts/             — Node-only tooling outside the SvelteKit build (thumbnai
 ```bash
 npm run dev                          # dev server with HMR
 npm run build                        # static build → build/
+npm run check                        # full data + geo + curation + reliability + build gate
 npm run preview                      # preview the production build
 npm run prep-thumbs -- <imageFolder> # pre-generate <folder>/thumbnails/ (run before shipping a drive)
 ```
@@ -79,9 +80,9 @@ Deployment: ship a zip containing `build/`, `start.bat` (as `start.bat.txt` to d
 
 ## Datasets
 
-The registry is `src/lib/datasets.js`. Each entry is `{ id, label, csvPath }`; `DEFAULT_DATASET_ID` picks the one loaded on first run. CSV column schema (shared across datasets):
+The registry is `src/lib/datasets.js`. Each entry is `{ id, label, csvPath, allowBarcodeLess? }`; `DEFAULT_DATASET_ID` picks the one loaded on first run. `allowBarcodeLess` is true only for site checklists that deliberately retain a named taxon before any specimen image is catalogued. CSV column schema (shared across datasets):
 
-Required: `TaxonomicName` (rows without it are skipped), `CatalogueNumber` (one row per image — a species with 3 images has 3 rows sharing a TaxonomicName).
+Required columns: `TaxonomicName` (rows without a value are skipped), `CatalogueNumber`. A blank CatalogueNumber value is allowed only when the registry explicitly sets `allowBarcodeLess`; it creates a non-curatable checklist placeholder with no image. Barcoded specimens may also have an intentionally blank `ImageFile` and remain valid Data/Map records.
 Optional: `Clade`, `Order`, `Family`, `Genus`, `VernacularName`, `Habit`, `LeafArrangement`, `LeafForm`, `LeafVenation`, `LeafMargin`, `Stipules`, `Exudate`.
 Optional (per-specimen / curation): `DecimalLatitude`, `DecimalLongitude`, `Locality`, `RecordedBy`, `RecordNumber`, `CollectionDate`, `Country`, `TypeStatus`, `TypeName`, `InstitutionCode`, `LeafSample`, `DNAextracted`, `DNAsequenced`, `DNAnotes`, `EditedAt`. `InstitutionCode` is the **holding herbarium** (DwC institutionCode, e.g. `K`); when the column is absent it's derived from the `CatalogueNumber` barcode prefix (`K…` → `K`). `TypeStatus` surfaces as a "Type" badge on browse thumbnails + a column in Curate. The four DNA-sampling columns track leaf-fragment sampling for sequencing: `LeafSample` / `DNAsequenced` are yes/no (parsed via `parseYesNo`, stored `'yes'`/`''`, shown as checkboxes in the edit modal), `DNAextracted` is a tube number (e.g. `BT_015`), `DNAnotes` is free text (sequence filename, "degraded DNA", …). All four are editable in the specimen edit modal and shown as Curate columns. In the Images (Browse) view the thumbnail border also reports DNA progress by precedence — purple (`DNAsequenced`) → green (`LeafSample`) → red (type) → default gray (`HerbariumImage.svelte:borderClass`); the stages are sequential so the further state simply wins. Matching corner badges (TYPE / LEAF / DNA) stack top-left in `SpeciesCard.svelte`; they share `badgeClass` — a dark-green chip (`bg-emerald-700`), darker than the bright green tissue border so it stays legible against it. The modal also lets the curator set the **identifier name** (defaults from the sidebar curator, but editable since an ID may be by someone else — the saved-CSV filename owner stays the sidebar identity) and the **identification date** (defaults to today, backdatable; stored `YYYY-MM-DD` in the identifications log).
 Tolerated but never read: `FullName`. Any other columns are silently ignored. Column names are case-sensitive.
@@ -98,11 +99,13 @@ Shipped CSVs follow `<Label>_herbarium_images_<YYMMDD>.csv` — e.g. `Ankarafant
 
 Each user can override the shipped CSV by dropping their own file into the image folder they've picked for that dataset. The file must start with the same prefix as the shipped CSV and end in `.csv` — e.g. `Ankarafantsika_herbarium_images_Stuart.csv` or `Ankarafantsika_herbarium_images_Johny.csv`. On every (dataset, folder) change the app calls `readCustomCsvFromFolder` (`stores/folder.js`), which enumerates the folder with `folderHandle.entries()` and filters by prefix. Matching is case-insensitive (for Windows users who rename with different casing). A literal copy of the shipped filename is ignored so backups don't accidentally trigger override mode. If multiple matches exist, the most recently modified wins — matches "use my newest work". When an override loads the sidebar shows `Using <filename> from this folder` with the actual discovered filename. If absent, the shipped CSV is used with no indicator fanfare. If present but malformed, the previously-loaded grid stays visible and an amber banner names the file. To revert to the shipped CSV, delete or rename the personalised file and reload. This piggybacks on the existing folder handle — no second picker, no new IndexedDB key — and is the v1 stepping-stone before cloud sync.
 
+The loaded override's `lastModified` is retained in `taxaSourceLastModifiedStore`. An in-app correction save refuses to replace the file if it changed or appeared after loading, so an Excel edit cannot be silently overwritten. The edit modal serialises an immutable candidate Map, writes corrections before the append-only identification, and updates shared state only for writes that have succeeded. Identification appends de-duplicate an exact existing tail, making an ambiguous retry safe; if a combined save writes only the correction, that durable correction is reflected app-wide while the modal reports the partial outcome and stays open to retry the identification.
+
 ### Adding a dataset
 
 1. Export the CSV (real CSV, not xlsx — PapaParse cannot read Excel).
 2. Drop it into `static/data/`.
-3. Append a `{ id, label, csvPath }` entry to `datasets` in `src/lib/datasets.js`.
+3. Append a `{ id, label, csvPath }` entry to `datasets` in `src/lib/datasets.js`; add `allowBarcodeLess: true` only for a checklist that intentionally permits placeholder taxa.
 4. Rebuild. The sidebar selector picks it up automatically; at ≥3 datasets it switches from a segmented control to a dropdown.
 
 If a registry entry points at a CSV that doesn't exist yet (e.g. the Ranomafana placeholder), switching to it logs a 404 and leaves `taxaStore` null — the grid is empty until the file is dropped in.

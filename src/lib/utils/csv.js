@@ -110,7 +110,7 @@ export const parseYesNo = (raw) => (/^(yes|y|true|1)$/i.test(String(raw ?? '').t
  * Splits an ImageFile cell into de-duplicated file basenames. A specimen carries
  * 0-2 images in one cell, separated by ';' (e.g. "K004152211; K004152211_a").
  */
-function splitImageFiles(raw) {
+export function splitImageFiles(raw) {
 	if (!raw) return [];
 	return [...new Set(raw.split(';').map((s) => s.trim()).filter(Boolean))];
 }

@@ -230,6 +230,11 @@ date, and any notes.
    described in EDIT THE SPECIES DATA YOURSELF below — you can edit
    records in the app or by hand in Excel.)
 
+If you edit the corrections CSV in Excel while the app is already
+open, reload the browser before saving another change in the app. The
+app checks the file's modification time and will refuse to overwrite
+newer external edits; reload to bring those edits into the grid first.
+
 Two kinds of "herbarium" appear in the edit window and mean different
 things:
   - Holding herbarium — which institution owns the physical sheet
@@ -352,10 +357,14 @@ CSV COLUMN REFERENCE
 Columns the app reads (case-sensitive):
 
   TaxonomicName      required — scientific name, the display label.
-  CatalogueNumber    required for images — matches <value>.jpg in
+  CatalogueNumber    required column; normally matches <value>.jpg in
                      your image folder. One row per image, so a
                      species with three images has three rows with
-                     the same TaxonomicName.
+                     the same TaxonomicName. The two park checklists
+                     may contain a blank value for a taxon recorded
+                     before a specimen image was catalogued. Kew
+                     specimen rows keep their barcode even when no
+                     image file is currently available.
   Clade, Order,      optional — shown and used for filters.
     Family, Genus
   VernacularName     optional — shown after the scientific name and

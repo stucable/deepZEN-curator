@@ -1,8 +1,7 @@
 <script>
-	import { taxaStore, regionSpeciesKeys, locatedSpeciesKeys, filterStore, speciesFilterKeys, specimenSearchPredicate, typeStatusOptions, TYPE_ANY } from '$lib/stores/taxa.js';
+	import { taxaStore, regionSpeciesKeys, locatedSpeciesKeys, filterStore, speciesFilterKeys, specimenSearchPredicate, specimenPassesRegion, typeStatusOptions, TYPE_ANY } from '$lib/stores/taxa.js';
 	import { selectionPolygonStore, includeUnlocatedStore, hiddenSpeciesStore } from '$lib/stores/map.js';
 	import { editingSpecimenStore, foldingDeterminationStore } from '$lib/stores/view.js';
-	import { pointInRing } from '$lib/utils/geo.js';
 	import { INSTITUTION_NAMES } from '$lib/utils/csv.js';
 
 	// Every control that narrows this table lives in the shared filterStore, so the Browse
@@ -82,11 +81,7 @@
 		if (hasPoly) {
 			const includeUnlocated = $includeUnlocatedStore;
 			const keys = $regionSpeciesKeys;
-			out = out.filter((s) =>
-				s.lat != null && s.lng != null
-					? pointInRing(s.lng, s.lat, polygon)
-					: includeUnlocated && !!keys?.has(s.currentDetermination)
-			);
+			out = out.filter((s) => specimenPassesRegion(s, polygon, includeUnlocated, keys));
 		}
 		// All specimen-level filters — the toolbar Search box / Country / Herbarium plus the
 		// sidebar Collector series / Collection number / Type — shared with the Browse grid

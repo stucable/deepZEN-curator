@@ -6,8 +6,13 @@ import {
 	isIdentificationLogName,
 	getOverrideFilename,
 	getIdentificationLogFilename
-} from '$lib/datasets.js';
-import { serializeSpecimensCsv, appendIdentificationToLog, appendIdentificationsToLog } from '$lib/utils/csv.js';
+} from '../datasets.js';
+import {
+	serializeSpecimensCsv,
+	appendIdentificationToLog,
+	appendIdentificationsToLog,
+	parseIdentificationLog
+} from '../utils/csv.js';
 
 const LEGACY_KEY = 'imageFolderHandle';
 
@@ -127,7 +132,7 @@ export async function reconnectFolder(datasetId) {
 
 /**
  * Scans a permission-granted folder for the newest file whose name satisfies
- * `matches`, returning `{ text, filename }` (most-recently-modified wins —
+ * `matches`, returning `{ text, filename, lastModified }` (most-recently-modified wins —
  * "use my newest work") or `null` when none match. Shared by the override and
  * identifications-log discovery below.
  */
@@ -140,7 +145,7 @@ async function readNewestMatchingFile(folderHandle, matches) {
 	if (candidates.length === 0) return null;
 	candidates.sort((a, b) => b.file.lastModified - a.file.lastModified);
 	const { name, file } = candidates[0];
-	return { text: await file.text(), filename: name };
+	return { text: await file.text(), filename: name, lastModified: file.lastModified };
 }
 
 /**
@@ -149,7 +154,7 @@ async function readNewestMatchingFile(folderHandle, matches) {
  * shipped CSV (a backup) nor the identifications log (which also shares the
  * prefix) — see isOverrideName. Case-insensitive; newest wins.
  *
- * Returns `{ text, filename }` when found and readable, or `null` when no
+ * Returns `{ text, filename, lastModified }` when found and readable, or `null` when no
  * override is present (the normal case).
  */
 export function readCustomCsvFromFolder(folderHandle, dataset) {
@@ -198,25 +203,91 @@ async function writeCsvToFolder(folderHandle, filename, text) {
 	const writable = await fileHandle.createWritable();
 	try {
 		await writable.write(text);
-	} finally {
 		await writable.close();
+	} catch (err) {
+		// createWritable() stages changes until close. Abort a failed stream so a
+		// partial/empty replacement is never committed over the curator's CSV.
+		try {
+			await writable.abort?.(err);
+		} catch {
+			// Preserve the original write error.
+		}
+		throw err;
+	}
+	const written = await fileHandle.getFile();
+	return { filename, lastModified: written.lastModified };
+}
+
+/** Raised when a correction CSV changed after the app loaded it. */
+export class FileConflictError extends Error {
+	constructor(filename) {
+		super(`${filename} changed on disk since it was loaded. Reload the app before saving so those edits are not overwritten.`);
+		this.name = 'FileConflictError';
+		this.filename = filename;
+	}
+}
+
+async function fileMetadata(folderHandle, filename) {
+	try {
+		const handle = await folderHandle.getFileHandle(filename);
+		const file = await handle.getFile();
+		return { filename, lastModified: file.lastModified };
+	} catch (err) {
+		if (err?.name === 'NotFoundError') return null;
+		throw err;
 	}
 }
 
 /**
  * Writes the full specimen set back to a per-user override CSV (a complete,
  * lossless personalised copy — the same kind of file a user can hand-drop). The
- * caller has already mutated specimens (corrected coords/country/collectors and
- * stamped EditedAt). Targets, in order: an explicit `filename`, else the user's
+ * caller supplies the immutable candidate specimen Map to serialise. Targets, in
+ * order: an explicit `filename`, else the user's
  * existing override file (so we overwrite it, not spawn a second), else a fresh
- * `<prefix><user>.csv`. Returns the filename written.
- * @returns {Promise<string>}
+ * `<prefix><user>.csv`. When `expectedLastModified` is supplied, the target must
+ * still have that timestamp (`null` means the caller loaded no override). This
+ * prevents an externally-edited/new correction file from being overwritten.
+ * @returns {Promise<{filename:string,lastModified:number}>}
  */
-export async function writeSpecimenOverride(folderHandle, dataset, specimensByCatalogue, { filename, user } = {}) {
+export async function writeSpecimenOverride(
+	folderHandle,
+	dataset,
+	specimensByCatalogue,
+	{ filename, user, expectedLastModified } = {}
+) {
 	const existing = filename ? null : await readCustomCsvFromFolder(folderHandle, dataset);
 	const targetName = filename || existing?.filename || getOverrideFilename(dataset, user);
-	await writeCsvToFolder(folderHandle, targetName, serializeSpecimensCsv(specimensByCatalogue));
-	return targetName;
+
+	if (expectedLastModified !== undefined) {
+		const current = filename
+			? await fileMetadata(folderHandle, targetName)
+			: existing && { filename: existing.filename, lastModified: existing.lastModified };
+		const unchanged = expectedLastModified === null
+			? current === null
+			: current?.lastModified === expectedLastModified;
+		if (!unchanged) throw new FileConflictError(targetName);
+	}
+
+	return writeCsvToFolder(folderHandle, targetName, serializeSpecimensCsv(specimensByCatalogue));
+}
+
+function sameIdentification(a, b) {
+	return !!a && !!b &&
+		a.catalogueNumber === b.catalogueNumber &&
+		a.scientificName === b.scientificName &&
+		(a.identifier ?? '') === (b.identifier ?? '') &&
+		(a.herbarium ?? '') === (b.herbarium ?? '') &&
+		(a.identificationDate ?? '') === (b.identificationDate ?? '') &&
+		(a.remarks ?? '') === (b.remarks ?? '') &&
+		(a.changeType ?? '') === (b.changeType ?? '');
+}
+
+function endsWithIdentifications(existingText, entries) {
+	if (!entries?.length) return true;
+	const existing = parseIdentificationLog(existingText);
+	if (existing.length < entries.length) return false;
+	const tail = existing.slice(-entries.length);
+	return tail.every((entry, index) => sameIdentification(entry, entries[index]));
 }
 
 /**
@@ -224,15 +295,18 @@ export async function writeSpecimenOverride(folderHandle, dataset, specimensByCa
  * the file's prior bytes (a literal text append, not a parse-rewrite, so log
  * history is never reshaped). Creates the log with a header when none exists yet.
  * `entry` is `{ catalogueNumber, scientificName, identifier, identificationDate, remarks }`.
- * Returns the log filename written.
- * @returns {Promise<string>}
+ * An exact matching tail is treated as an already-completed retry, preventing
+ * duplicate history rows after an ambiguous browser/filesystem failure.
+ * @returns {Promise<{filename:string,lastModified:number,appended:boolean}>}
  */
 export async function appendIdentification(folderHandle, dataset, entry, { filename, user } = {}) {
 	const existing = await readIdentificationLog(folderHandle, dataset);
-	const text = appendIdentificationToLog(existing?.text ?? '', entry);
 	const targetName = filename || existing?.filename || getIdentificationLogFilename(dataset, user);
-	await writeCsvToFolder(folderHandle, targetName, text);
-	return targetName;
+	if (existing && endsWithIdentifications(existing.text, [entry])) {
+		return { filename: targetName, lastModified: existing.lastModified, appended: false };
+	}
+	const text = appendIdentificationToLog(existing?.text ?? '', entry);
+	return { ...(await writeCsvToFolder(folderHandle, targetName, text)), appended: true };
 }
 
 /**
@@ -240,16 +314,18 @@ export async function appendIdentification(folderHandle, dataset, entry, { filen
  * (the bulk analogue of appendIdentification). Used by the synonymy "fold X → Y" action,
  * which re-identifies every sheet of name X at once. Preserves prior bytes (literal
  * append) except the one-time legacy-schema migration. Same filename-target precedence as
- * appendIdentification, so the fold writes the same log file the modal uses. Returns the
- * log filename written (or '' for an empty batch). Must be called inside a user gesture
+ * appendIdentification, so the fold writes the same log file the modal uses. An exact
+ * matching tail makes a retry idempotent. Must be called inside a user gesture
  * (it escalates the folder to readwrite).
- * @returns {Promise<string>}
+ * @returns {Promise<{filename:string,lastModified:number,appended:boolean}|null>}
  */
 export async function appendIdentifications(folderHandle, dataset, entries, { filename, user } = {}) {
-	if (!entries || entries.length === 0) return filename ?? '';
+	if (!entries || entries.length === 0) return null;
 	const existing = await readIdentificationLog(folderHandle, dataset);
-	const text = appendIdentificationsToLog(existing?.text ?? '', entries);
 	const targetName = filename || existing?.filename || getIdentificationLogFilename(dataset, user);
-	await writeCsvToFolder(folderHandle, targetName, text);
-	return targetName;
+	if (existing && endsWithIdentifications(existing.text, entries)) {
+		return { filename: targetName, lastModified: existing.lastModified, appended: false };
+	}
+	const text = appendIdentificationsToLog(existing?.text ?? '', entries);
+	return { ...(await writeCsvToFolder(folderHandle, targetName, text)), appended: true };
 }

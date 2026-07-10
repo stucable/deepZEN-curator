@@ -1,6 +1,8 @@
 /**
  * Dataset registry. Append to the list + drop the CSV into static/data/ to add
  * a new dataset. Image folders are remembered per-dataset at runtime.
+ * `allowBarcodeLess` is an explicit data contract for site checklists that may
+ * name a taxon before a corresponding specimen image has been catalogued.
  *
  * Shipped CSV filename convention: `<Label>_herbarium_images_<YYMMDD>.csv`.
  * Keep to it — the per-user override lookup derives its prefix from the stem
@@ -10,12 +12,14 @@ export const datasets = [
 	{
 		id: 'ankarafantsika',
 		label: 'Ankarafantsika',
-		csvPath: '/data/Ankarafantsika_herbarium_images_260422.csv'
+		csvPath: '/data/Ankarafantsika_herbarium_images_260422.csv',
+		allowBarcodeLess: true
 	},
 	{
 		id: 'ranomafana',
 		label: 'Ranomafana',
-		csvPath: '/data/Ranomafana_herbarium_images_260423.csv'
+		csvPath: '/data/Ranomafana_herbarium_images_260423.csv',
+		allowBarcodeLess: true
 	},
 	{
 		id: 'macaranga',

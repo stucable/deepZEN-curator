@@ -446,6 +446,30 @@
 	function hideTip() {
 		hovered = null;
 	}
+	function showFocusTip(specimen, e) {
+		if (drawing || placing) return;
+		const containerRect = containerEl?.getBoundingClientRect();
+		const markerRect = e.currentTarget?.getBoundingClientRect?.();
+		if (!containerRect || !markerRect) return;
+		hovered = specimen;
+		tipPos = {
+			x: markerRect.left - containerRect.left + markerRect.width + 8,
+			y: markerRect.top - containerRect.top
+		};
+	}
+	function activateMarker(e, specimen) {
+		if (e.key !== 'Enter' && e.key !== ' ') return;
+		e.preventDefault();
+		e.stopPropagation();
+		editing = specimen;
+		explodedKey = null;
+	}
+	function activateStack(e, key) {
+		if (e.key !== 'Enter' && e.key !== ' ') return;
+		e.preventDefault();
+		e.stopPropagation();
+		explodedKey = explodedKey === key ? null : key;
+	}
 
 	// ---- Edit modal ----------------------------------------------------------
 	let editing = $state(null);
@@ -519,6 +543,7 @@
 	}
 
 	function onPointerDown(e) {
+		if (!svgEl?.contains(e.target)) return;
 		pressedSpecimen = null;
 		pressedStack = null;
 		dragResult = null; // clears any uncollected drag (e.g. a drag with no trailing click)
@@ -596,6 +621,30 @@
 	// wheel-zoom. Zooms about the map centre. dir > 0 = in, dir < 0 = out.
 	function zoomStep(dir) {
 		zoomAt(0.5, 0.5, dir > 0 ? 0.7 : 1 / 0.7);
+	}
+	function onMapKeydown(e) {
+		// Marker/button handlers stop propagation; these shortcuts apply only when
+		// the map surface itself has focus.
+		if (e.target !== e.currentTarget) return;
+		const panX = viewBox.w * 0.1;
+		const panY = viewBox.h * 0.1;
+		switch (e.key) {
+			case 'ArrowLeft': viewBox = { ...viewBox, x: viewBox.x - panX }; break;
+			case 'ArrowRight': viewBox = { ...viewBox, x: viewBox.x + panX }; break;
+			case 'ArrowUp': viewBox = { ...viewBox, y: viewBox.y - panY }; break;
+			case 'ArrowDown': viewBox = { ...viewBox, y: viewBox.y + panY }; break;
+			case '+':
+			case '=': zoomStep(1); break;
+			case '-': zoomStep(-1); break;
+			case 'Home': resetView(); break;
+			case 'Escape':
+				if (placing) cancelPlacing();
+				if (drawing) cancelDrawing();
+				explodedKey = null;
+				break;
+			default: return;
+		}
+		e.preventDefault();
 	}
 
 	// Attach wheel non-passively so preventDefault works (Svelte may register it
@@ -680,6 +729,7 @@
 	}
 
 	function onSvgClick(e) {
+		if (!svgEl?.contains(e.target)) return;
 		// A point was just dragged-and-dropped: open it pre-filled with the new coords.
 		if (dragResult) {
 			pendingLocation = { lng: dragResult.lng, lat: dragResult.lat };
@@ -930,9 +980,21 @@
 
 	<div class="flex min-h-0 flex-1 gap-3">
 		<!-- Map -->
+		<!-- The map is a composite application widget with complete keyboard handlers;
+		     Svelte's checker does not recognise role="application" as interactive. -->
+		<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
 		<div
 			bind:this={containerEl}
 			class="relative min-h-0 flex-1 overflow-hidden rounded-lg border border-gray-200 bg-sky-50 dark:border-gray-700 dark:bg-gray-900"
+			onpointerdown={onPointerDown}
+			onpointermove={onPointerMove}
+			onpointerup={onPointerUp}
+			onpointerleave={onPointerUp}
+			onclick={onSvgClick}
+			onkeydown={onMapKeydown}
+			tabindex="0"
+			role="application"
+			aria-label="Map of {isMad ? 'Madagascar' : extentId === 'wio' ? 'the Western Indian Ocean' : 'the world'} showing specimen records"
 		>
 			{#if !$taxaStore}
 				<div class="flex h-full items-center justify-center text-gray-400">Loading…</div>
@@ -942,13 +1004,6 @@
 					viewBox={viewBoxStr}
 					preserveAspectRatio="xMidYMid meet"
 					class="h-full w-full {drawing || placing ? 'cursor-crosshair' : panning || draggingPoint ? 'cursor-grabbing' : 'cursor-grab'}"
-					onpointerdown={onPointerDown}
-					onpointermove={onPointerMove}
-					onpointerup={onPointerUp}
-					onpointerleave={onPointerUp}
-					onclick={onSvgClick}
-					role="application"
-					aria-label="Map of {isMad ? 'Madagascar' : extentId === 'wio' ? 'the Western Indian Ocean' : 'the world'} showing specimen records"
 				>
 					<!-- Basemap: parchment land, biome zones clipped to the coast, then a
 					     crisp shoreline stroke on top so the coastline stays sharp over the fills. -->
@@ -1045,10 +1100,14 @@
 							style:pointer-events={drawing || placing ? 'none' : 'auto'}
 							class={drawing || placing ? '' : 'cursor-pointer'}
 							role="button"
+							tabindex={drawing || placing ? -1 : 0}
 							aria-label={`${p.specimen.currentDetermination} ${p.specimen.catalogueNumber}`}
 							onmouseenter={(e) => showTip(p.specimen, e)}
 							onmousemove={moveTip}
 							onmouseleave={hideTip}
+							onfocus={(e) => showFocusTip(p.specimen, e)}
+							onblur={hideTip}
+							onkeydown={(e) => activateMarker(e, p.specimen)}
 						/>
 					{/each}
 
@@ -1086,10 +1145,14 @@
 									style:pointer-events={drawing || placing ? 'none' : 'auto'}
 									class={drawing || placing ? '' : 'cursor-pointer'}
 									role="button"
+									tabindex={drawing || placing ? -1 : 0}
 									aria-label={`${m.specimen.currentDetermination} ${m.specimen.catalogueNumber}`}
 									onmouseenter={(e) => showTip(m.specimen, e)}
 									onmousemove={moveTip}
 									onmouseleave={hideTip}
+									onfocus={(e) => showFocusTip(m.specimen, e)}
+									onblur={hideTip}
+									onkeydown={(e) => activateMarker(e, m.specimen)}
 								/>
 							{/each}
 						{/if}
@@ -1105,7 +1168,9 @@
 							style:pointer-events={drawing || placing ? 'none' : 'auto'}
 							class={drawing || placing ? '' : 'cursor-pointer'}
 							role="button"
+							tabindex={drawing || placing ? -1 : 0}
 							aria-label={`${st.members.length} specimens at one location — click to ${open ? 'collapse' : 'expand'}`}
+							onkeydown={(e) => activateStack(e, `${st.x},${st.y}`)}
 						/>
 						<text
 							x={st.x}
