@@ -446,6 +446,43 @@
 	function hideTip() {
 		hovered = null;
 	}
+
+	// ---- Keyboard focus ring -------------------------------------------------
+	// Markers are focusable (tabindex) so keyboard users can reach them, but the
+	// browser's own focus ring is unusable here: an `outline` on an SVG child is
+	// drawn in user units, and the map's viewBox magnifies those ~30–100×, so
+	// Chrome's 5px ring renders as a huge white-and-black bullseye swallowing the
+	// point. The markers therefore set `outline-none` and we draw our own ring in
+	// user units (`focusRingRadius`), sized like the search rings next to them.
+	//
+	// Only *keyboard* focus is ringed — `:focus-visible` is false when a click
+	// moves focus — so clicking a point still just opens it, leaving the dot
+	// looking exactly as it does at rest.
+	let focusedCat = $state(null); // catalogueNumber of the keyboard-focused marker
+	let focusedStack = $state(null); // `${x},${y}` key of the keyboard-focused stack hub
+
+	const focusRingRadius = $derived(pointRadius * 2.5);
+
+	/** True when this focus event came from the keyboard rather than a pointer. */
+	function isKeyboardFocus(e) {
+		return e.currentTarget?.matches?.(':focus-visible') ?? false;
+	}
+	function focusMarker(specimen, e) {
+		focusedStack = null;
+		focusedCat = isKeyboardFocus(e) ? specimen.catalogueNumber : null;
+		showFocusTip(specimen, e);
+	}
+	function focusStack(key, e) {
+		focusedCat = null;
+		focusedStack = isKeyboardFocus(e) ? key : null;
+	}
+	/** Blur handler for every marker: drops both the ring and the focus tooltip. */
+	function blurMarker() {
+		focusedCat = null;
+		focusedStack = null;
+		hideTip();
+	}
+
 	function showFocusTip(specimen, e) {
 		if (drawing || placing) return;
 		const containerRect = containerEl?.getBoundingClientRect();
@@ -1088,6 +1125,17 @@
 					     Island-anchored single sheets look like GPS dots; their "approximate"
 					     provenance still shows in the hover tooltip. -->
 					{#each plot.singles as p (p.specimen.catalogueNumber)}
+						{#if focusedCat === p.specimen.catalogueNumber}
+							<circle
+								cx={p.x}
+								cy={p.y}
+								r={focusRingRadius}
+								fill="none"
+								stroke="#059669"
+								stroke-width={polyStroke}
+								pointer-events="none"
+							/>
+						{/if}
 						<circle
 							cx={p.x}
 							cy={p.y}
@@ -1098,15 +1146,15 @@
 							stroke-width={pointStroke}
 							data-cat={p.specimen.catalogueNumber}
 							style:pointer-events={drawing || placing ? 'none' : 'auto'}
-							class={drawing || placing ? '' : 'cursor-pointer'}
+							class="outline-none {drawing || placing ? '' : 'cursor-pointer'}"
 							role="button"
 							tabindex={drawing || placing ? -1 : 0}
 							aria-label={`${p.specimen.currentDetermination} ${p.specimen.catalogueNumber}`}
 							onmouseenter={(e) => showTip(p.specimen, e)}
 							onmousemove={moveTip}
 							onmouseleave={hideTip}
-							onfocus={(e) => showFocusTip(p.specimen, e)}
-							onblur={hideTip}
+							onfocus={(e) => focusMarker(p.specimen, e)}
+							onblur={blurMarker}
 							onkeydown={(e) => activateMarker(e, p.specimen)}
 						/>
 					{/each}
@@ -1133,6 +1181,17 @@
 								/>
 							{/each}
 							{#each st.members as m, i (m.specimen.catalogueNumber)}
+								{#if focusedCat === m.specimen.catalogueNumber}
+									<circle
+										cx={st.x + ring[i].dx}
+										cy={st.y + ring[i].dy}
+										r={focusRingRadius}
+										fill="none"
+										stroke="#059669"
+										stroke-width={polyStroke}
+										pointer-events="none"
+									/>
+								{/if}
 								<circle
 									cx={st.x + ring[i].dx}
 									cy={st.y + ring[i].dy}
@@ -1143,18 +1202,29 @@
 									stroke-width={pointStroke}
 									data-cat={m.specimen.catalogueNumber}
 									style:pointer-events={drawing || placing ? 'none' : 'auto'}
-									class={drawing || placing ? '' : 'cursor-pointer'}
+									class="outline-none {drawing || placing ? '' : 'cursor-pointer'}"
 									role="button"
 									tabindex={drawing || placing ? -1 : 0}
 									aria-label={`${m.specimen.currentDetermination} ${m.specimen.catalogueNumber}`}
 									onmouseenter={(e) => showTip(m.specimen, e)}
 									onmousemove={moveTip}
 									onmouseleave={hideTip}
-									onfocus={(e) => showFocusTip(m.specimen, e)}
-									onblur={hideTip}
+									onfocus={(e) => focusMarker(m.specimen, e)}
+									onblur={blurMarker}
 									onkeydown={(e) => activateMarker(e, m.specimen)}
 								/>
 							{/each}
+						{/if}
+						{#if focusedStack === `${st.x},${st.y}`}
+							<circle
+								cx={st.x}
+								cy={st.y}
+								r={focusRingRadius}
+								fill="none"
+								stroke="#059669"
+								stroke-width={polyStroke}
+								pointer-events="none"
+							/>
 						{/if}
 						<circle
 							cx={st.x}
@@ -1166,10 +1236,12 @@
 							stroke-width={pointStroke}
 							data-stack={`${st.x},${st.y}`}
 							style:pointer-events={drawing || placing ? 'none' : 'auto'}
-							class={drawing || placing ? '' : 'cursor-pointer'}
+							class="outline-none {drawing || placing ? '' : 'cursor-pointer'}"
 							role="button"
 							tabindex={drawing || placing ? -1 : 0}
 							aria-label={`${st.members.length} specimens at one location — click to ${open ? 'collapse' : 'expand'}`}
+							onfocus={(e) => focusStack(`${st.x},${st.y}`, e)}
+							onblur={blurMarker}
 							onkeydown={(e) => activateStack(e, `${st.x},${st.y}`)}
 						/>
 						<text
