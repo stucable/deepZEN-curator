@@ -1,12 +1,20 @@
 <script>
 	import { taxaStore } from '$lib/stores/taxa.js';
+	import { manifestErrorStore } from '$lib/stores/dataset.js';
 	import { selectionPolygonStore, includeUnlocatedStore, clearSelection, hiddenSpeciesStore, showAllSpecies } from '$lib/stores/map.js';
 	import SpeciesCard from './SpeciesCard.svelte';
 
 	let { species = [] } = $props();
 </script>
 
-{#if $taxaStore === null}
+{#if $manifestErrorStore}
+	<!-- No manifest means there is no dataset to load, so don't spin forever pretending
+	     to load one — point at the sidebar message that explains what is wrong. -->
+	<div class="py-20 text-center text-gray-500 dark:text-gray-400">
+		<p>No dataset could be loaded.</p>
+		<p class="mt-1 text-sm">This install's <code class="font-mono">data/datasets.json</code> is missing or invalid — see the message in the sidebar.</p>
+	</div>
+{:else if $taxaStore === null}
 	<div class="flex items-center justify-center py-20">
 		<div class="h-8 w-8 animate-spin rounded-full border-4 border-gray-300 border-t-emerald-600 dark:border-gray-600"></div>
 		<span class="ml-3 text-gray-500 dark:text-gray-400">Loading species data…</span>

@@ -1,7 +1,7 @@
 <script>
 	import { taxaStore, taxaSourceStore, taxaSourceFilenameStore, csvLoadErrorStore, filterStore, determinedSpeciesCount, filteredSpeciesCounts, mapVisibleSpeciesCount, unidentifiedSpecimenCount, availableFamilies, availableGenera, vernacularOptions, collectorSeriesOptions, filterOptionCounts, DEFAULT_HABITS } from '$lib/stores/taxa.js';
 	import { folderHandleStore, pendingFolderHandleStore, selectFolder, reconnectFolder } from '$lib/stores/folder.js';
-	import { currentDatasetStore } from '$lib/stores/dataset.js';
+	import { currentDatasetStore, manifestErrorStore } from '$lib/stores/dataset.js';
 	import { viewModeStore } from '$lib/stores/view.js';
 	import { selectionPolygonStore, includeUnlocatedStore, clearSelection, hiddenSpeciesStore, showAllSpecies } from '$lib/stores/map.js';
 	import { curatorNameStore, curatorHerbariumStore } from '$lib/stores/curator.js';
@@ -86,7 +86,15 @@
 	<!-- Dataset selector -->
 	<div>
 		<h2 class="mb-1 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Dataset</h2>
-		<DatasetSelector />
+		{#if $manifestErrorStore}
+			<!-- No manifest means no datasets at all, so say so plainly rather than
+			     leaving an empty selector above an empty grid. -->
+			<div class="rounded border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
+				Could not load <code class="font-mono">data/datasets.json</code> — {$manifestErrorStore}. Reinstall this build or restore the file.
+			</div>
+		{:else}
+			<DatasetSelector />
+		{/if}
 	</div>
 
 	<!-- Theme toggle -->

@@ -1,7 +1,7 @@
 <script>
 	import { onMount } from 'svelte';
 	import { loadSpeciesData, parseSpeciesCsv, applyIdentificationLog, CsvSchemaError } from '$lib/utils/csv.js';
-	import { taxaStore, taxaSourceStore, taxaSourceFilenameStore, taxaSourceLastModifiedStore, csvLoadErrorStore, identificationLogStore, filterStore, browseSpecies, DEFAULT_HABITS } from '$lib/stores/taxa.js';
+	import { taxaStore, taxaSourceStore, taxaSourceFilenameStore, taxaSourceLastModifiedStore, csvLoadErrorStore, identificationLogStore, filterStore, browseSpecies, sortStore, DEFAULT_HABITS } from '$lib/stores/taxa.js';
 	import {
 		folderHandleStore,
 		pendingFolderHandleStore,
@@ -9,7 +9,7 @@
 		readCustomCsvFromFolder,
 		readIdentificationLog
 	} from '$lib/stores/folder.js';
-	import { currentDatasetStore, restoreDataset } from '$lib/stores/dataset.js';
+	import { currentDatasetStore, loadDatasetManifest, restoreDataset } from '$lib/stores/dataset.js';
 	import { restoreTheme } from '$lib/stores/theme.js';
 	import { restoreCuratorName } from '$lib/stores/curator.js';
 	import { viewModeStore, editingSpecimenStore, foldingDeterminationStore } from '$lib/stores/view.js';
@@ -32,6 +32,9 @@
 	onMount(async () => {
 		await restoreTheme();
 		await restoreCuratorName();
+		// The registry is a runtime manifest (per-edition packaging), so it must be
+		// loaded before a persisted selection can be resolved against it.
+		await loadDatasetManifest();
 		await restoreDataset();
 	});
 
@@ -61,7 +64,13 @@
 		return overlaid;
 	}
 
-	function defaultFilterState() {
+	/**
+	 * The filter state a dataset opens on. Habits come from the dataset's manifest
+	 * defaults: checklists keep the woody-habit default (`null` → DEFAULT_HABITS),
+	 * monographs open with no habit filter, since their CSVs carry no Habit column and
+	 * the default would silently hide material in a mixed-habit genus.
+	 */
+	function defaultFilterState(ds) {
 		return {
 			search: '',
 			order: '',
@@ -69,7 +78,7 @@
 			genus: '',
 			clade: '',
 			vernacular: '',
-			habits: [...DEFAULT_HABITS],
+			habits: [...(ds?.defaults?.habits ?? DEFAULT_HABITS)],
 			leafArrangement: '',
 			leafForm: '',
 			leafVenation: '',
@@ -83,6 +92,8 @@
 			typeStatus: '',
 			country: '',
 			herbarium: '',
+			leafSample: '',
+			dnaSequenced: '',
 			specimenSearch: ''
 		};
 	}
@@ -171,10 +182,17 @@
 			identificationLogStore.set([]);
 			editingSpecimenStore.set(null);
 			foldingDeterminationStore.set(null);
-			filterStore.set(defaultFilterState());
+			filterStore.set(defaultFilterState(ds));
 			clearSelection();
 			showAllSpecies();
-			mapExtentStore.set('madagascar'); // each dataset opens on the Madagascar view
+			// Opening sort + map frame come from the dataset's manifest defaults: a site
+			// checklist opens on Family sort, a monograph on Name sort (Family is degenerate
+			// in a one-family dataset), and each dataset names the extent that frames its
+			// material — Macaranga opens on WIO so its Comoros and Mascarene sheets are
+			// visible rather than hidden behind the Madagascar frame.
+			// SortPills still falls back to 'name' if a dataset makes the mode degenerate.
+			sortStore.set(ds.defaults.sort);
+			mapExtentStore.set(ds.defaults.mapExtent);
 			folderHandleStore.set(null);
 			pendingFolderHandleStore.set(null);
 			(async () => {

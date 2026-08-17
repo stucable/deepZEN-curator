@@ -10,7 +10,7 @@
  * text-shaping. Run with: npm run check:phaseb:persist
  */
 import {
-	getDataset,
+	findDataset,
 	getOverridePrefix,
 	getIdentificationLogPrefix,
 	getOverrideFilename,
@@ -27,6 +27,7 @@ import {
 	serializeSpecimensCsv,
 	applyIdentificationLog
 } from '../src/lib/utils/csv.js';
+import { loadDatasets } from './manifest.js';
 
 let failures = 0;
 const ok = (m) => console.log(`  ✓ ${m}`);
@@ -37,7 +38,7 @@ const eq = (a, b, m) => {
 	assert(pass, `${m}${pass ? '' : ` (got ${JSON.stringify(a)})`}`);
 };
 
-const mac = getDataset('macaranga');
+const mac = findDataset(await loadDatasets(), 'macaranga');
 
 console.log('\n1. Filename conventions (Macaranga)');
 eq(getOverridePrefix(mac), 'Macaranga_Kew_', 'override prefix');

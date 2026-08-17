@@ -1,0 +1,35 @@
+{
+	"manifestVersion": 1,
+	"defaultDatasetId": "ankarafantsika",
+	"datasets": [
+		{
+			"id": "ankarafantsika",
+			"label": "Ankarafantsika",
+			"csvPath": "/data/Ankarafantsika_herbarium_images_260422.csv",
+			"kind": "checklist",
+			"allowBarcodeLess": true
+		},
+		{
+			"id": "ranomafana",
+			"label": "Ranomafana",
+			"csvPath": "/data/Ranomafana_herbarium_images_260423.csv",
+			"kind": "checklist",
+			"allowBarcodeLess": true
+		},
+		{
+			"id": "macaranga",
+			"label": "Macaranga",
+			"csvPath": "/data/Macaranga_Kew_260604.csv",
+			"kind": "monograph",
+			"defaults": {
+				"mapExtent": "wio"
+			}
+		},
+		{
+			"id": "sarcolaenaceae",
+			"label": "Sarcolaenaceae",
+			"csvPath": "/data/Sarcolaenaceae_Kew_260703.csv",
+			"kind": "monograph"
+		}
+	]
+}

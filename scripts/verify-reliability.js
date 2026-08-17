@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 import { get } from 'svelte/store';
-import { getDataset, getIdentificationLogFilename, getOverrideFilename } from '../src/lib/datasets.js';
+import { findDataset, getIdentificationLogFilename, getOverrideFilename } from '../src/lib/datasets.js';
+import { loadDatasets } from './manifest.js';
 import { parseIdentificationLog, parseSpeciesCsv, serializeSpecimensCsv } from '../src/lib/utils/csv.js';
 import {
 	taxaStore,
@@ -126,7 +127,7 @@ assert(specimenPassesRegion(unlocated, polygon, true, new Set(['Island species']
 	'a genuinely unlocated record of an in-region species passes when include-unlocated is on');
 
 console.log('\n3. Correction writes detect conflicts and abort failed streams');
-const dataset = getDataset('macaranga');
+const dataset = findDataset(await loadDatasets(), 'macaranga');
 const overrideName = getOverrideFilename(dataset, 'Tester');
 const folder = new MemoryDirectoryHandle();
 folder.put(overrideName, serializeSpecimensCsv(parsed.specimensByCatalogue), 50);

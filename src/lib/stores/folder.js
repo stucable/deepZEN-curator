@@ -1,7 +1,6 @@
 import { writable } from 'svelte/store';
 import { get as idbGet, set as idbSet, del as idbDel } from 'idb-keyval';
 import {
-	DEFAULT_DATASET_ID,
 	isOverrideName,
 	isIdentificationLogName,
 	getOverrideFilename,
@@ -15,6 +14,14 @@ import {
 } from '../utils/csv.js';
 
 const LEGACY_KEY = 'imageFolderHandle';
+
+/**
+ * The dataset a legacy single-key handle belonged to. The pre-multi-dataset layout only
+ * ever shipped Ankarafantsika, so the migration target is that id — not whatever the
+ * current edition's manifest calls its default. In an edition without Ankarafantsika the
+ * migrated key is simply never read.
+ */
+const LEGACY_HANDLE_DATASET_ID = 'ankarafantsika';
 
 function keyFor(datasetId) {
 	return `imageFolderHandle:${datasetId}`;
@@ -38,7 +45,7 @@ async function migrateLegacyHandle() {
 	try {
 		const legacy = await idbGet(LEGACY_KEY);
 		if (!legacy) return;
-		const defaultKey = keyFor(DEFAULT_DATASET_ID);
+		const defaultKey = keyFor(LEGACY_HANDLE_DATASET_ID);
 		if (!(await idbGet(defaultKey))) {
 			await idbSet(defaultKey, legacy);
 		}
