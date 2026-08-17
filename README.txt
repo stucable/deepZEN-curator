@@ -1,14 +1,30 @@
-deepZEN-curator  —  v1.4.1  (Ankarafantsika + Ranomafana + Macaranga + Sarcolaenaceae, 2026-07-09)
+deepZEN-curator  —  v1.4.2  (Ankarafantsika + Ranomafana + Macaranga + Sarcolaenaceae, 2026-08-17)
 ==================================================================================================
 
 Offline herbarium image browser for field botanists in Madagascar.
 Ships with four datasets — Ankarafantsika, Ranomafana, Macaranga and
-Sarcolaenaceae — switchable from the sidebar at runtime.
+Sarcolaenaceae — switchable from the sidebar at runtime. Some copies are
+sent out for a single collection only; those show that one name in the
+sidebar instead of a dataset picker, and everything else works the same.
 Runs entirely on your laptop — no internet needed once you have the files.
 
 Three views — Images, Data and Map — let you browse specimen photos,
 edit the records behind them, and place georeferenced collections on a
 map of Madagascar.
+
+
+WHAT'S NEW IN v1.4.2
+--------------------
+- Fixed: clicking a point on the map no longer turns it into a large
+  white circle with a dot in the middle. The point now stays exactly as
+  it looks the rest of the time, and the specimen window opens as
+  before. (Moving through the points with the Tab key still draws a
+  small green ring around the one you are on, so you can see where you
+  are.)
+- Single-collection copies: a copy of the app can now be sent out
+  containing just one collection — Sarcolaenaceae on its own, say.
+  The sidebar then shows that collection's name in place of the picker,
+  and the app opens set up for it.
 
 
 WHAT'S NEW IN v1.4.1
@@ -458,7 +474,7 @@ REPORTING ISSUES / GETTING UPDATES
 ----------------------------------
 - If something looks wrong (missing species, broken image, weird
   filter behaviour), email Stuart with a screenshot and the
-  version number at the top of this file (v1.4.1).
+  version number at the top of this file (v1.4.2).
 - New versions will arrive by email as a small zip. Unzip over
   the old folder (or delete the old folder first to avoid stale
   cached files), then double-click start.bat as before.
