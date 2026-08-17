@@ -21,7 +21,7 @@ import { readFile, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { datasets } from '../src/lib/datasets.js';
+import { loadDatasets } from './manifest.js';
 import {
 	parseSpeciesCsv,
 	serializeSpecimensCsv,
@@ -67,6 +67,7 @@ async function importMainParser() {
 async function main() {
 	const { mod: mainMod, tmp } = await importMainParser();
 	const texts = {};
+	const datasets = await loadDatasets();
 	for (const ds of datasets) {
 		try {
 			texts[ds.id] = await readFile(join('static', ds.csvPath.replace(/^\//, '')), 'utf8');

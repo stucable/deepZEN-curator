@@ -3,7 +3,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import Papa from 'papaparse';
-import { datasets } from '../src/lib/datasets.js';
+import { loadDatasets } from './manifest.js';
 import {
 	IGNORED_HABIT_TOKENS,
 	KNOWN_HABITS,
@@ -42,6 +42,7 @@ function sample(values, limit = 8) {
 }
 
 let failed = false;
+const datasets = await loadDatasets();
 
 for (const dataset of datasets) {
 	const errors = [];

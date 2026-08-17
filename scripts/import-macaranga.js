@@ -204,4 +204,4 @@ console.log(`Wrote ${outPath}`);
 console.log(
 	`  ${rows.length} specimens | ${withImage} with image | ${multiImage} multi-image | ${withCoords} georeferenced`
 );
-console.log(`Next: add to src/lib/datasets.js -> { id: 'macaranga', label: 'Macaranga', csvPath: '/data/${outName}' }`);
+console.log(`Next: add to static/data/datasets.json -> { "id": "macaranga", "label": "Macaranga", "csvPath": "/data/${outName}", "kind": "monograph" }`);
